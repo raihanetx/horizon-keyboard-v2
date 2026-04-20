@@ -114,7 +114,16 @@ class MiMoInputMethodService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        // Properly stop lifecycle before destroy
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+        }
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+        }
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        // Clear ViewModelStore to prevent memory leaks
+        lifecycleOwner.viewModelStore.clear()
         viewModel = null
         composeView = null
         super.onDestroy()

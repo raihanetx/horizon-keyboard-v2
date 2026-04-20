@@ -47,7 +47,7 @@ fun ToolbarHeader(
             visible = isVoiceActive,
             enter = fadeIn() + slideInVertically(),
             exit = fadeOut() + slideOutVertically(),
-            modifier = Modifier.matchParentSize()
+            modifier = Modifier.fillMaxSize()
         ) {
             VoiceOverlayContent(
                 onClose = { onTabSelected(KeyboardTab.KEYBOARD) }
