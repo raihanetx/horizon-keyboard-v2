@@ -98,8 +98,7 @@ fun KeyboardScreen(
                     ClipboardPanel()
                 }
                 KeyboardTab.TERMINAL -> {
-                    // Pass viewModel so terminal can display typed text
-                    // without using BasicTextField (which causes recursive IME crash)
+                    // Magic Button — reads screen for URLs via Accessibility, tap to copy/open
                     TerminalPanel(viewModel = viewModel)
                 }
                 KeyboardTab.SETTINGS -> {

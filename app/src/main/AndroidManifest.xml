@@ -27,6 +27,19 @@
                 android:resource="@xml/method" />
         </service>
 
+        <!-- Accessibility Service - reads screen text to detect URLs for Magic Button -->
+        <service
+            android:name=".ScreenTextService"
+            android:exported="false"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
         <!-- Settings Activity so users can enable the keyboard -->
         <activity
             android:name=".MiMoSettingsActivity"

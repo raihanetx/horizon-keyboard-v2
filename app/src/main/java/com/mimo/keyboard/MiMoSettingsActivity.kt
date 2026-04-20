@@ -1,9 +1,11 @@
 package com.mimo.keyboard
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,7 +13,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,14 +35,11 @@ import com.mimo.keyboard.ui.theme.HorizonKeyboardTheme
  * Settings Activity for the Horizon Keyboard.
  *
  * This activity serves as the app's launcher entry point.
- * It guides users through the two-step process of enabling
- * the keyboard in Android's system settings:
+ * It guides users through the three-step setup process:
  *
  * 1. Enable Horizon Keyboard in Input Method settings
  * 2. Select Horizon Keyboard as the active input method
- *
- * BUG FIX #3: Status now refreshes automatically when the user
- * returns from system settings, using lifecycle RESUME events.
+ * 3. Enable Accessibility for Magic Button (screen link detection)
  */
 class MiMoSettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,18 +57,18 @@ private fun SettingsScreen() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // BUG FIX #3: Use mutableStateOf instead of remember { } so status can update.
-    // Re-check keyboard status every time the activity resumes (user returns from settings).
+    // Re-check status every time the activity resumes
     var isKeyboardEnabled by remember { mutableStateOf(isKeyboardEnabled(context)) }
     var isKeyboardSelected by remember { mutableStateOf(isKeyboardSelected(context)) }
+    var isAccessibilityEnabled by remember { mutableStateOf(isAccessibilityEnabled(context)) }
 
     // Observe lifecycle to re-check status when user returns from system settings
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                // Re-check both statuses when activity comes back to foreground
                 isKeyboardEnabled = isKeyboardEnabled(context)
                 isKeyboardSelected = isKeyboardSelected(context)
+                isAccessibilityEnabled = isAccessibilityEnabled(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -80,7 +81,8 @@ private fun SettingsScreen() {
         modifier = Modifier
             .fillMaxSize()
             .background(HorizonColors.PureBlack)
-            .padding(24.dp),
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -106,15 +108,21 @@ private fun SettingsScreen() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Status indicator
+        // Overall status indicator
         val statusText = when {
-            isKeyboardEnabled && isKeyboardSelected -> "Keyboard is active and ready!"
-            isKeyboardEnabled -> "Keyboard is enabled but not selected. Tap Step 2."
-            else -> "Keyboard is not enabled yet. Follow the steps below."
+            isKeyboardEnabled && isKeyboardSelected && isAccessibilityEnabled ->
+                "All features active! Magic Button ready."
+            isKeyboardEnabled && isKeyboardSelected ->
+                "Keyboard active! Enable Accessibility for Magic Button."
+            isKeyboardEnabled ->
+                "Keyboard enabled but not selected. Tap Step 2."
+            else ->
+                "Follow the steps below to set up."
         }
 
         val statusColor = when {
-            isKeyboardEnabled && isKeyboardSelected -> HorizonColors.TerminalGreen
+            isKeyboardEnabled && isKeyboardSelected && isAccessibilityEnabled -> HorizonColors.TerminalGreen
+            isKeyboardEnabled && isKeyboardSelected -> HorizonColors.Accent
             isKeyboardEnabled -> HorizonColors.Accent
             else -> HorizonColors.TextMuted
         }
@@ -155,9 +163,28 @@ private fun SettingsScreen() {
                     val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
                     imm.showInputMethodPicker()
                 } catch (e: Exception) {
-                    // Some devices/versions require system permission for this
-                    // Fallback: open input method settings instead
                     val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                }
+            }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Step 3: Enable Accessibility (for Magic Button)
+        SettingsCard(
+            stepNumber = "3",
+            title = "Enable Magic Button",
+            description = "Open Accessibility settings and enable Horizon Keyboard to detect links on screen",
+            isComplete = isAccessibilityEnabled,
+            onClick = {
+                try {
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    val intent = Intent(Settings.ACTION_SETTINGS)
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(intent)
                 }
@@ -167,7 +194,7 @@ private fun SettingsScreen() {
         Spacer(modifier = Modifier.height(40.dp))
 
         Text(
-            text = "v1.2.0",
+            text = "v1.3.0",
             fontSize = 12.sp,
             color = HorizonColors.TextExtraMuted,
             fontFamily = FontFamily.Monospace
@@ -198,6 +225,23 @@ private fun isKeyboardSelected(context: Context): Boolean {
     )
     return enabledInputMethods.any {
         it.packageName == context.packageName && it.id == selectedId
+    }
+}
+
+/**
+ * Checks if the Horizon Keyboard's Accessibility Service is enabled.
+ */
+private fun isAccessibilityEnabled(context: Context): Boolean {
+    // Also check our shared store
+    if (ScreenLinkStore.isServiceActive) return true
+
+    // Fallback: check via AccessibilityManager
+    val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+    val enabledServices = am.getEnabledAccessibilityServiceList(
+        AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+    )
+    return enabledServices.any {
+        it.resolveInfo.serviceInfo.packageName == context.packageName
     }
 }
 

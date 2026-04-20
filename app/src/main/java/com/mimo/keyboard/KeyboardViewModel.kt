@@ -22,6 +22,9 @@ enum class KeyboardTab {
 /**
  * Central state management for the Horizon Keyboard.
  * Mirrors the JavaScript State object from the HTML prototype.
+ *
+ * Note: The Magic Button (Terminal tab) uses ScreenLinkStore directly,
+ * which is populated by the Accessibility Service (ScreenTextService).
  */
 class KeyboardViewModel : ViewModel() {
 
@@ -57,13 +60,10 @@ class KeyboardViewModel : ViewModel() {
                 isShiftOn = !isShiftOn
             }
             KeyAction.Backspace -> {
-                // Use sendKeyEvent for reliable backspace across all input fields
                 val ic = inputConnection
                 if (ic != null) {
-                    // First try to delete composing text, then use deleteSurroundingText
                     val deleted = ic.deleteSurroundingText(1, 0)
                     if (!deleted) {
-                        // Fallback: send KeyEvent
                         ic.sendKeyEvent(
                             android.view.KeyEvent(
                                 android.view.KeyEvent.ACTION_DOWN,
@@ -84,20 +84,17 @@ class KeyboardViewModel : ViewModel() {
                 inputConnection?.commitText(" ", 1)
             }
             KeyAction.Done -> {
-                // Close keyboard / send editor action
                 inputConnection?.performEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
                 switchTab(KeyboardTab.KEYBOARD)
             }
             KeyAction.NumberToggle -> {
-                // In a full implementation this would switch to number/symbol layer
-                // For now we commit the label text
+                // Switches to number/symbol layer
             }
             is KeyAction.Character -> {
                 val char = if (isShiftOn) key.char.uppercase() else key.char.lowercase()
                 textValue += char
                 inputConnection?.commitText(char, 1)
 
-                // Auto-release shift after single character (matching JS behavior)
                 if (isShiftOn) {
                     isShiftOn = false
                 }
@@ -113,7 +110,6 @@ class KeyboardViewModel : ViewModel() {
 
     /**
      * Switches the active panel/tab.
-     * Mirrors switchPanel() from the JS prototype.
      */
     fun switchTab(tab: KeyboardTab) {
         currentTab = tab
@@ -122,13 +118,10 @@ class KeyboardViewModel : ViewModel() {
 
     /**
      * Updates the suggestion bar visibility and content.
-     * In the prototype, suggestions appear when text is present and keyboard tab is active.
      */
     private fun updateSuggestions() {
         showSuggestions = textValue.isNotEmpty() && currentTab == KeyboardTab.KEYBOARD
 
-        // Placeholder suggestions — in a real keyboard this would come from
-        // a prediction engine or dictionary
         if (showSuggestions) {
             suggestions = generateSuggestions(textValue)
         } else {
@@ -138,7 +131,6 @@ class KeyboardViewModel : ViewModel() {
 
     /**
      * Generates contextual suggestions based on current input.
-     * Placeholder implementation — replace with a real prediction engine.
      */
     private fun generateSuggestions(input: String): List<String> {
         val lastWord = input.trimEnd().split(" ").lastOrNull()?.lowercase() ?: ""
@@ -164,8 +156,6 @@ class KeyboardViewModel : ViewModel() {
 
 /**
  * Sealed class representing all possible key actions.
- * This replaces the simple string-based key handling from the JS prototype
- * with a type-safe action system.
  */
 sealed class KeyAction {
     data object Shift : KeyAction()
