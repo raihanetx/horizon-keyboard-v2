@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Theme for the Settings Activity (launcher) -->
+    <style name="Theme.HorizonKeyboard" parent="android:Theme.Material.NoActionBar">
+        <item name="android:colorBackground">#000000</item>
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:colorPrimary">#0A84FF</item>
+        <item name="android:colorPrimaryDark">#0066CC</item>
+        <item name="android:colorAccent">#0A84FF</item>
+        <item name="android:textColorPrimary">#FFFFFF</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>
