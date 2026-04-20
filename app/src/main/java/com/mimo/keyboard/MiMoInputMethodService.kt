@@ -2,7 +2,9 @@ package com.mimo.keyboard
 
 import android.inputmethodservice.InputMethodService
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.widget.FrameLayout
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -44,8 +46,16 @@ class MiMoInputMethodService : InputMethodService() {
     override fun onCreateInputView(): View {
         // If we already have a compose view, return it (Android may call this multiple times)
         val existingView = composeView
-        if (existingView != null && existingView.parent == null) {
-            return existingView
+        if (existingView != null) {
+            // BUG FIX #5: If old ComposeView is still attached to a parent,
+            // remove it first to prevent duplicate views and memory leaks
+            if (existingView.parent is ViewGroup) {
+                (existingView.parent as ViewGroup).removeView(existingView)
+            }
+            // Reuse the existing view if now detached
+            if (existingView.parent == null) {
+                return existingView
+            }
         }
 
         // Ensure lifecycle is at least CREATED
@@ -62,6 +72,20 @@ class MiMoInputMethodService : InputMethodService() {
         val vm = viewModel ?: KeyboardViewModel().also { viewModel = it }
 
         val newView = ComposeView(this).apply {
+            // BUG FIX #4: Set minimum height to prevent ComposeView from
+            // measuring to 0 on first layout pass (before composition completes).
+            // This ensures the keyboard is always visible, even on devices
+            // where the InputMethodService parent doesn't re-layout after
+            // ComposeView's first composition.
+            val density = resources.displayMetrics.density
+            setMinimumHeight((270 * density).toInt())
+
+            // Set layout params to ensure proper sizing
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+
             // These MUST be set BEFORE setContent
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeViewModelStoreOwner(lifecycleOwner)
@@ -87,6 +111,13 @@ class MiMoInputMethodService : InputMethodService() {
     override fun onStartInput(editorInfo: EditorInfo?, restarting: Boolean) {
         super.onStartInput(editorInfo, restarting)
         viewModel?.inputConnection = currentInputConnection
+
+        // BUG FIX #1: Reset ViewModel state when switching to a new input field.
+        // Without this, textValue and suggestions from the previous field leak
+        // into the new field, causing wrong suggestions and stale terminal text.
+        if (restarting) {
+            viewModel?.reset()
+        }
     }
 
     override fun onStartInputView(editorInfo: EditorInfo?, restarting: Boolean) {

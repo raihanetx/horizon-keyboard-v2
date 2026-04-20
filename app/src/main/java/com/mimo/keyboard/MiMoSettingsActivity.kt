@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
-import android.view.inputmethod.InputMethodInfo
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -18,10 +17,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.mimo.keyboard.ui.theme.HorizonColors
 import com.mimo.keyboard.ui.theme.HorizonKeyboardTheme
 
@@ -34,6 +36,9 @@ import com.mimo.keyboard.ui.theme.HorizonKeyboardTheme
  *
  * 1. Enable Horizon Keyboard in Input Method settings
  * 2. Select Horizon Keyboard as the active input method
+ *
+ * BUG FIX #3: Status now refreshes automatically when the user
+ * returns from system settings, using lifecycle RESUME events.
  */
 class MiMoSettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,15 +54,26 @@ class MiMoSettingsActivity : ComponentActivity() {
 @Composable
 private fun SettingsScreen() {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Check if keyboard is enabled
-    val isKeyboardEnabled = remember {
-        isKeyboardEnabled(context)
-    }
+    // BUG FIX #3: Use mutableStateOf instead of remember { } so status can update.
+    // Re-check keyboard status every time the activity resumes (user returns from settings).
+    var isKeyboardEnabled by remember { mutableStateOf(isKeyboardEnabled(context)) }
+    var isKeyboardSelected by remember { mutableStateOf(isKeyboardSelected(context)) }
 
-    // Check if keyboard is selected as active
-    val isKeyboardSelected = remember {
-        isKeyboardSelected(context)
+    // Observe lifecycle to re-check status when user returns from system settings
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                // Re-check both statuses when activity comes back to foreground
+                isKeyboardEnabled = isKeyboardEnabled(context)
+                isKeyboardSelected = isKeyboardSelected(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     Column(
@@ -151,7 +167,7 @@ private fun SettingsScreen() {
         Spacer(modifier = Modifier.height(40.dp))
 
         Text(
-            text = "v1.1.0",
+            text = "v1.2.0",
             fontSize = 12.sp,
             color = HorizonColors.TextExtraMuted,
             fontFamily = FontFamily.Monospace
@@ -222,7 +238,7 @@ private fun SettingsCard(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = if (isComplete) "✓" else stepNumber,
+                text = if (isComplete) "\u2713" else stepNumber,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = HorizonColors.TextPrimary
@@ -233,7 +249,7 @@ private fun SettingsCard(
 
         Column {
             Text(
-                text = if (isComplete) "$title ✓" else title,
+                text = if (isComplete) "$title \u2713" else title,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = HorizonColors.TextPrimary

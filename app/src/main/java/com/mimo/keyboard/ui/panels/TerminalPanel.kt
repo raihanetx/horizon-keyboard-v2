@@ -37,11 +37,10 @@ fun TerminalPanel(
     val outputLines = remember { mutableStateListOf("Horizon Dev Terminal Ready...") }
 
     // Capture text from the ViewModel when terminal tab is active
+    // BUG FIX #2: Always sync commandBuffer with textValue, even when empty.
+    // Previously, deleting all text left stale content in the terminal display.
     LaunchedEffect(viewModel.textValue) {
-        // When user types while on terminal tab, add to command buffer
-        if (viewModel.textValue.isNotEmpty()) {
-            commandBuffer = viewModel.textValue
-        }
+        commandBuffer = viewModel.textValue
     }
 
     Column(

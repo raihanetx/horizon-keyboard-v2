@@ -24,8 +24,27 @@ jobs:
     - name: Build Debug APK
       run: ./gradlew assembleDebug
 
-    - name: Upload APK
+    - name: Upload APK as Artifact
       uses: actions/upload-artifact@v4
       with:
         name: horizon-keyboard-debug
         path: app/build/outputs/apk/debug/*.apk
+
+    - name: Extract Version
+      id: version
+      run: |
+        VERSION=$(grep 'versionName' app/build.gradle.kts | sed 's/.*versionName = "//' | sed 's/".*//')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.version.outputs.version }}
+        name: Horizon Keyboard v${{ steps.version.outputs.version }}
+        body: |
+          Horizon Keyboard v${{ steps.version.outputs.version }}
+
+          Direct download: `app-debug.apk`
+        files: app/build/outputs/apk/debug/*.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
