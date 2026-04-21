@@ -36,17 +36,23 @@ import com.mimo.keyboard.ui.theme.HorizonColors
  */
 @Composable
 fun SettingsPanel(
+    settings: KeyboardSettings? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val settings = remember { KeyboardSettings(context) }
+    // FIX: Use the shared KeyboardSettings instance from MiMoInputMethodService
+    // if provided, instead of always creating a new one. Previously, SettingsPanel
+    // always created its own instance via KeyboardSettings(context). Both instances
+    // used the same SharedPreferences file, so data was shared, but this was wasteful
+    // and confusing. Now we prefer the shared instance when available.
+    val effectiveSettings = settings ?: remember { KeyboardSettings(context) }
 
     // Read settings as state so changes trigger recomposition
-    var isHapticsEnabled by remember { mutableStateOf(settings.isHapticsEnabled) }
-    var isSoundEnabled by remember { mutableStateOf(settings.isSoundEnabled) }
-    var isAutoCapitalize by remember { mutableStateOf(settings.isAutoCapitalize) }
-    var isAutoSpace by remember { mutableStateOf(settings.isAutoSpace) }
-    var isShowSuggestions by remember { mutableStateOf(settings.isShowSuggestions) }
+    var isHapticsEnabled by remember { mutableStateOf(effectiveSettings.isHapticsEnabled) }
+    var isSoundEnabled by remember { mutableStateOf(effectiveSettings.isSoundEnabled) }
+    var isAutoCapitalize by remember { mutableStateOf(effectiveSettings.isAutoCapitalize) }
+    var isAutoSpace by remember { mutableStateOf(effectiveSettings.isAutoSpace) }
+    var isShowSuggestions by remember { mutableStateOf(effectiveSettings.isShowSuggestions) }
 
     Column(
         modifier = modifier
@@ -74,7 +80,7 @@ fun SettingsPanel(
                 isOn = isHapticsEnabled,
                 onToggle = {
                     isHapticsEnabled = !isHapticsEnabled
-                    settings.isHapticsEnabled = isHapticsEnabled
+                    effectiveSettings.isHapticsEnabled = isHapticsEnabled
                 }
             )
             Spacer(modifier = Modifier.height(6.dp))
@@ -84,7 +90,7 @@ fun SettingsPanel(
                 isOn = isSoundEnabled,
                 onToggle = {
                     isSoundEnabled = !isSoundEnabled
-                    settings.isSoundEnabled = isSoundEnabled
+                    effectiveSettings.isSoundEnabled = isSoundEnabled
                 }
             )
         }
@@ -97,7 +103,7 @@ fun SettingsPanel(
                 isOn = isAutoCapitalize,
                 onToggle = {
                     isAutoCapitalize = !isAutoCapitalize
-                    settings.isAutoCapitalize = isAutoCapitalize
+                    effectiveSettings.isAutoCapitalize = isAutoCapitalize
                 }
             )
             Spacer(modifier = Modifier.height(6.dp))
@@ -107,7 +113,7 @@ fun SettingsPanel(
                 isOn = isAutoSpace,
                 onToggle = {
                     isAutoSpace = !isAutoSpace
-                    settings.isAutoSpace = isAutoSpace
+                    effectiveSettings.isAutoSpace = isAutoSpace
                 }
             )
             Spacer(modifier = Modifier.height(6.dp))
@@ -117,7 +123,7 @@ fun SettingsPanel(
                 isOn = isShowSuggestions,
                 onToggle = {
                     isShowSuggestions = !isShowSuggestions
-                    settings.isShowSuggestions = isShowSuggestions
+                    effectiveSettings.isShowSuggestions = isShowSuggestions
                 }
             )
         }

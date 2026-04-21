@@ -64,7 +64,9 @@ fun KeyboardKey(
     keyDef: KeyDef,
     isShiftActive: Boolean = false,
     onPress: (KeyAction) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    longPressDelayMs: Long = LONG_PRESS_DELAY_MS,
+    keyHeightMultiplier: Float = 1.0f
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -73,12 +75,13 @@ fun KeyboardKey(
     var showAlternatives by remember { mutableStateOf(false) }
     var isLongPressTriggered by remember { mutableStateOf(false) }
 
-    // FIX: Key repeat for backspace — repeatedly fires delete while held
+    // FIX: Key repeat for backspace — repeatedly fires delete while held.
+    // Uses longPressDelayMs from settings instead of hardcoded constant.
     if (keyDef.style == KeyStyle.BACKSPACE) {
         LaunchedEffect(isPressed) {
             if (isPressed) {
                 // Initial delay before repeat starts
-                delay(INITIAL_REPEAT_DELAY_MS)
+                delay(longPressDelayMs + 100L)  // Slightly longer than long-press for repeat
                 isLongPressTriggered = true
                 // Continuous repeat while pressed
                 while (isActive) {
@@ -91,19 +94,30 @@ fun KeyboardKey(
         }
     }
 
-    // FIX: Long-press detection for key alternatives
+    // FIX: Long-press detection for key alternatives.
+    // Root cause of popup-dismiss bug: The old code set showAlternatives = false
+    // after a 50ms delay when isPressed became false. This meant the popup was
+    // dismissed almost instantly when the user lifted their finger — they never
+    // got a chance to tap an alternative.
+    //
+    // The fix: When isPressed becomes false, we only reset isLongPressTriggered
+    // (so the main key's onClick doesn't fire the primary action). We do NOT
+    // dismiss the popup here — the Popup composable's own dismiss handling
+    // (dismissOnClickOutside, dismissOnBackPress, onDismissRequest) manages
+    // the popup lifecycle. The user can lift their finger after long-pressing
+    // and then tap an alternative at their leisure.
     if (keyDef.alternatives != null && keyDef.style != KeyStyle.BACKSPACE) {
         LaunchedEffect(isPressed) {
             if (isPressed) {
-                delay(LONG_PRESS_DELAY_MS)
+                delay(longPressDelayMs)
                 if (isActive) {
                     isLongPressTriggered = true
                     showAlternatives = true
                 }
             } else {
-                // Small delay to allow tap on alternative before hiding
-                delay(50)
-                showAlternatives = false
+                // Only reset the long-press flag so the main key's onClick
+                // doesn't fire the primary action. The popup stays visible
+                // until the user taps an alternative or dismisses it.
                 isLongPressTriggered = false
             }
         }
@@ -140,9 +154,12 @@ fun KeyboardKey(
     // The popup is positioned with offset(y = -8.dp) to appear above the key.
     Box(modifier = modifier) {
         // Main key
+        // FIX: Use keyHeightMultiplier from settings instead of hardcoded 46.dp.
+        // The keyHeightMultiplier setting was defined in KeyboardSettings but
+        // never wired to the actual key height — changing it had no effect.
         Box(
             modifier = Modifier
-                .height(46.dp)
+                .height((46 * keyHeightMultiplier).dp)
                 .then(
                     if (isPressed) Modifier.offset(y = 1.dp) else Modifier
                 )
@@ -286,7 +303,9 @@ fun KeyboardRow(
     keys: List<KeyDef>,
     isShiftActive: Boolean = false,
     onPress: (KeyAction) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    longPressDelayMs: Long = LONG_PRESS_DELAY_MS,
+    keyHeightMultiplier: Float = 1.0f
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -297,7 +316,9 @@ fun KeyboardRow(
                 KeyboardKey(
                     keyDef = keyDef,
                     isShiftActive = isShiftActive,
-                    onPress = onPress
+                    onPress = onPress,
+                    longPressDelayMs = longPressDelayMs,
+                    keyHeightMultiplier = keyHeightMultiplier
                 )
             }
         }
@@ -306,5 +327,4 @@ fun KeyboardRow(
 
 // Timing constants for key interactions
 private const val LONG_PRESS_DELAY_MS = 300L
-private const val INITIAL_REPEAT_DELAY_MS = 400L
 private const val REPEAT_INTERVAL_MS = 50L

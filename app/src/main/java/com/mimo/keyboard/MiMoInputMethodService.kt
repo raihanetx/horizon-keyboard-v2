@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import android.widget.FrameLayout
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
@@ -36,6 +37,8 @@ import com.mimo.keyboard.ui.theme.HorizonKeyboardTheme
  * - Fixed: reset() now called on ALL field switches, not just restarting=true
  * - Fixed: inputConnection cleared in onFinishInput to prevent stale connection usage
  * - Fixed: SavedStateRegistryController.performSave() called on destroy
+ * - Fixed: Sync textValue from InputConnection after reset (was empty on pre-filled fields)
+ * - Fixed: Request CURSOR_UPDATE_MONITOR so cursor movements are continuously tracked
  */
 class MiMoInputMethodService : InputMethodService() {
 
@@ -132,6 +135,15 @@ class MiMoInputMethodService : InputMethodService() {
         // would leak stale textValue and suggestions from the previous field.
         // This is safe because the InputConnection is refreshed for every new field.
         viewModel?.reset()
+
+        // FIX: Sync textValue from the new InputConnection after reset.
+        // Without this, switching to a field that already has text leaves the ViewModel
+        // with empty textValue — no suggestions appear until the user types something.
+        // This is especially noticeable when tapping between pre-filled form fields.
+        val ic = currentInputConnection
+        if (ic != null) {
+            viewModel?.syncFromInputConnection(ic)
+        }
     }
 
     override fun onStartInputView(editorInfo: EditorInfo?, restarting: Boolean) {
@@ -141,8 +153,18 @@ class MiMoInputMethodService : InputMethodService() {
         // FIX: Request cursor updates so we know when the user taps to move
         // the cursor in the text field. Without this, suggestions become stale
         // after cursor movement because the ViewModel doesn't know the position changed.
+        //
+        // BUG FIX: Previously used only FLAG_GET_CURSOR_POSITION (value 1) which
+        // happens to equal CURSOR_UPDATE_IMMEDIATE (value 1) — so it only requested
+        // a ONE-SHOT immediate update. After the initial update, cursor movements
+        // were NOT reported, making onUpdateCursorAnchorInfo useless for ongoing
+        // cursor tracking.
+        //
+        // Now we request BOTH immediate + monitor mode:
+        // - CURSOR_UPDATE_IMMEDIATE: get current position right away
+        // - CURSOR_UPDATE_MONITOR: get ongoing updates whenever cursor moves
         currentInputConnection?.requestCursorUpdates(
-            CursorAnchorInfo.FLAG_GET_CURSOR_POSITION
+            InputConnection.CURSOR_UPDATE_IMMEDIATE or InputConnection.CURSOR_UPDATE_MONITOR
         )
 
         // Ensure lifecycle is RESUMED when keyboard is visible

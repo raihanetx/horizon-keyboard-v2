@@ -88,7 +88,14 @@ class ScreenTextService : AccessibilityService() {
             if (textContent.isNotEmpty()) {
                 val urls = extractUrls(textContent)
                 if (urls.isNotEmpty()) {
-                    ScreenLinkStore.addLinks(urls)
+                    // FIX: Replace stale links instead of only adding new ones.
+                    // Previously, links accumulated forever — navigating away from a page
+                    // kept showing the old page's links. Now we replace the entire list
+                    // on each successful scan, so only currently-visible links are shown.
+                    ScreenLinkStore.replaceLinks(urls)
+                } else {
+                    // No URLs found on current screen — clear stale links
+                    ScreenLinkStore.clearAll()
                 }
             }
         } catch (e: Exception) {
@@ -109,6 +116,12 @@ class ScreenTextService : AccessibilityService() {
      *
      * FIX: Added maxDepth parameter to prevent StackOverflowError on
      * deeply nested view hierarchies (some apps have 100+ depth levels).
+     *
+     * FIX: Recycle child AccessibilityNodeInfo objects after use.
+     * Previously, child nodes obtained via getChild() were never recycled.
+     * AccessibilityNodeInfo holds references to native memory that must be
+     * explicitly released. In a continuously-running AccessibilityService,
+     * failing to recycle causes steady native memory growth (leak).
      */
     private fun collectTextFromNode(
         node: AccessibilityNodeInfo,
@@ -135,10 +148,17 @@ class ScreenTextService : AccessibilityService() {
         }
 
         // Recurse into children
+        // FIX: Recycle each child node after processing to prevent native memory leaks.
+        // AccessibilityNodeInfo objects hold native binder references that leak if not recycled.
         for (i in 0 until node.childCount) {
             try {
-                node.getChild(i)?.let { child ->
-                    collectTextFromNode(child, builder, currentDepth + 1, maxDepth)
+                val child = node.getChild(i)
+                if (child != null) {
+                    try {
+                        collectTextFromNode(child, builder, currentDepth + 1, maxDepth)
+                    } finally {
+                        child.recycle()
+                    }
                 }
             } catch (e: Exception) {
                 // Child access can fail — skip this child

@@ -65,6 +65,23 @@ object ScreenLinkStore {
     }
 
     /**
+     * Replaces all links with a new set. Used by ScreenTextService to ensure
+     * only currently-visible links are shown (prevents stale links from
+     * accumulating after the user navigates away from a page).
+     *
+     * FIX: Previously, links were only ever added via addLinks() and never
+     * removed. This meant navigating to a different page would keep showing
+     * the old page's links in the Terminal panel. Now, each scan replaces
+     * the entire list with only the currently-visible URLs.
+     */
+    fun replaceLinks(newLinks: List<String>) {
+        synchronized(_links) {
+            _links.clear()
+            _links.addAll(newLinks.take(MAX_LINKS))
+        }
+    }
+
+    /**
      * Removes a specific link.
      */
     fun removeLink(url: String) {

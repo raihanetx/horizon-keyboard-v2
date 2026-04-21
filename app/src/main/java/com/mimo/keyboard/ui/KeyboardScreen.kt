@@ -1,6 +1,7 @@
 package com.mimo.keyboard.ui
 
 import android.content.Context
+import android.media.AudioManager
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -67,16 +68,27 @@ fun KeyboardScreen(
     // take effect immediately. Previously, toggling settings had no visible effect
     // because nothing re-read them after the toggle.
     var isHapticsEnabled by remember { mutableStateOf(settings?.isHapticsEnabled ?: true) }
+    var isSoundEnabled by remember { mutableStateOf(settings?.isSoundEnabled ?: false) }
     var isShowSuggestions by remember { mutableStateOf(settings?.isShowSuggestions ?: true) }
+    var longPressDelayMs by remember { mutableStateOf(settings?.longPressDelayMs?.toLong() ?: 300L) }
+    var keyHeightMultiplier by remember { mutableStateOf(settings?.keyHeightMultiplier ?: 1.0f) }
 
     // Poll settings for changes (settings are written by SettingsPanel via SharedPreferences)
+    // FIX: Now also polls isSoundEnabled, longPressDelayMs, and keyHeightMultiplier
+    // which were previously defined in KeyboardSettings but never read by the UI.
     LaunchedEffect(Unit) {
         while (true) {
             settings?.let {
                 val newHaptics = it.isHapticsEnabled
+                val newSound = it.isSoundEnabled
                 val newSuggestions = it.isShowSuggestions
+                val newDelay = it.longPressDelayMs.toLong()
+                val newHeight = it.keyHeightMultiplier
                 if (newHaptics != isHapticsEnabled) isHapticsEnabled = newHaptics
+                if (newSound != isSoundEnabled) isSoundEnabled = newSound
                 if (newSuggestions != isShowSuggestions) isShowSuggestions = newSuggestions
+                if (newDelay != longPressDelayMs) longPressDelayMs = newDelay
+                if (newHeight != keyHeightMultiplier) keyHeightMultiplier = newHeight
             }
             kotlinx.coroutines.delay(500)
         }
@@ -119,10 +131,18 @@ fun KeyboardScreen(
                     QwertyKeyboard(
                         isShiftOn = viewModel.isShiftOn,
                         isNumberLayer = isNumberLayer,
+                        longPressDelayMs = longPressDelayMs,
+                        keyHeightMultiplier = keyHeightMultiplier,
                         onKeyPress = { action ->
                             // FIX: Only vibrate if haptics are enabled in settings
                             if (isHapticsEnabled) {
                                 performHapticFeedback(context)
+                            }
+                            // FIX: Play key click sound if sound is enabled in settings.
+                            // Previously, the isSoundEnabled setting existed in KeyboardSettings
+                            // and SettingsPanel but had zero effect — no sound was ever played.
+                            if (isSoundEnabled) {
+                                performKeyPressSound(context)
                             }
                             when (action) {
                                 KeyAction.NumberToggle -> {
@@ -151,7 +171,7 @@ fun KeyboardScreen(
                     TerminalPanel(viewModel = viewModel)
                 }
                 KeyboardTab.SETTINGS -> {
-                    SettingsPanel()
+                    SettingsPanel(settings = settings)
                 }
             }
         }
@@ -166,6 +186,8 @@ fun KeyboardScreen(
 private fun QwertyKeyboard(
     isShiftOn: Boolean,
     isNumberLayer: Boolean,
+    longPressDelayMs: Long = 300L,
+    keyHeightMultiplier: Float = 1.0f,
     onKeyPress: (KeyAction) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -183,7 +205,9 @@ private fun QwertyKeyboard(
             KeyboardRow(
                 keys = rowKeys,
                 isShiftActive = isShiftOn,
-                onPress = onKeyPress
+                onPress = onKeyPress,
+                longPressDelayMs = longPressDelayMs,
+                keyHeightMultiplier = keyHeightMultiplier
             )
         }
     }
@@ -212,5 +236,22 @@ private fun performHapticFeedback(context: Context) {
         }
     } catch (e: Exception) {
         // Silently ignore vibration errors - not critical for keyboard function
+    }
+}
+
+/**
+ * Plays the system key press sound if sound feedback is enabled.
+ *
+ * FIX: Previously, the isSoundEnabled setting existed in KeyboardSettings and
+ * SettingsPanel but had zero effect — no sound was ever played anywhere in the code.
+ * Now this function plays the standard Android keyboard click sound using
+ * AudioManager when the setting is enabled.
+ */
+private fun performKeyPressSound(context: Context) {
+    try {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.playSoundEffect(AudioManager.FX_KEY_CLICK, -1f)
+    } catch (e: Exception) {
+        // Silently ignore sound errors - not critical for keyboard function
     }
 }
