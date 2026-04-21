@@ -4,6 +4,7 @@ import android.inputmethodservice.InputMethodService
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.EditorInfo
 import android.widget.FrameLayout
 import androidx.compose.ui.platform.ComposeView
@@ -43,9 +44,17 @@ class MiMoInputMethodService : InputMethodService() {
     private val lifecycleOwner = ServiceLifecycleOwner()
     private var composeView: ComposeView? = null
 
+    // FIX: Create KeyboardSettings instance so it can be passed to the UI layer.
+    // Previously, SettingsPanel wrote to KeyboardSettings but no other component
+    // read from it — toggling haptics, suggestions, auto-capitalize had no effect.
+    private var keyboardSettings: KeyboardSettings? = null
+
     override fun onCreate() {
         super.onCreate()
-        viewModel = KeyboardViewModel()
+        keyboardSettings = KeyboardSettings(this)
+        // FIX: Pass KeyboardSettings to ViewModel so it can respect user preferences
+        // for auto-capitalize, auto-space, and show suggestions.
+        viewModel = KeyboardViewModel(keyboardSettings)
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
     }
 
@@ -75,7 +84,8 @@ class MiMoInputMethodService : InputMethodService() {
             lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_START)
         }
 
-        val vm = viewModel ?: KeyboardViewModel().also { viewModel = it }
+        val vm = viewModel ?: KeyboardViewModel(keyboardSettings).also { viewModel = it }
+        val settings = keyboardSettings ?: KeyboardSettings(this).also { keyboardSettings = it }
 
         val newView = ComposeView(this).apply {
             // Set minimum height to prevent ComposeView from
@@ -96,7 +106,9 @@ class MiMoInputMethodService : InputMethodService() {
 
             setContent {
                 HorizonKeyboardTheme {
-                    KeyboardScreen(viewModel = vm)
+                    // FIX: Pass KeyboardSettings so the UI can respect user preferences
+                    // for haptics, suggestions, auto-capitalize, and auto-space.
+                    KeyboardScreen(viewModel = vm, settings = settings)
                 }
             }
         }
@@ -126,9 +138,35 @@ class MiMoInputMethodService : InputMethodService() {
         super.onStartInputView(editorInfo, restarting)
         viewModel?.inputConnection = currentInputConnection
 
+        // FIX: Request cursor updates so we know when the user taps to move
+        // the cursor in the text field. Without this, suggestions become stale
+        // after cursor movement because the ViewModel doesn't know the position changed.
+        currentInputConnection?.requestCursorUpdates(
+            CursorAnchorInfo.FLAG_GET_CURSOR_POSITION
+        )
+
         // Ensure lifecycle is RESUMED when keyboard is visible
         if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
             lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        }
+    }
+
+    /**
+     * FIX: Called when the cursor position changes in the input field.
+     * Without this override, tapping in a text field to reposition the cursor
+     * would not update the ViewModel's cursorPosition or textValue, causing
+     * stale/wrong suggestions to be shown.
+     *
+     * We re-sync textValue and cursorPosition from the InputConnection here
+     * so that suggestions are always based on the text around the actual cursor.
+     */
+    override fun onUpdateCursorAnchorInfo(cursorAnchorInfo: CursorAnchorInfo?) {
+        super.onUpdateCursorAnchorInfo(cursorAnchorInfo)
+        if (cursorAnchorInfo != null) {
+            val ic = currentInputConnection
+            if (ic != null) {
+                viewModel?.syncFromInputConnection(ic)
+            }
         }
     }
 

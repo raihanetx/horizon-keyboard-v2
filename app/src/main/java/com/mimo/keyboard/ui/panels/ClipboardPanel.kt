@@ -138,7 +138,10 @@ fun ClipboardPanel(
                 ClipCard(
                     text = clipText,
                     onPaste = {
-                        viewModel?.onKeyPress(KeyAction.Character(clipText))
+                        // FIX: Use InsertText instead of Character for multi-char paste.
+                        // KeyAction.Character applies lowercase()/uppercase() based on shift,
+                        // which corrupts pasted text like "Hello, World!" when shift is on.
+                        viewModel?.onKeyPress(KeyAction.InsertText(clipText))
                     }
                 )
             }

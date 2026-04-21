@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.mimo.keyboard.KeyAction
+import com.mimo.keyboard.KeyboardSettings
 import com.mimo.keyboard.KeyboardTab
 import com.mimo.keyboard.KeyboardViewModel
 import com.mimo.keyboard.ui.panels.ClipboardPanel
@@ -37,16 +38,41 @@ import com.mimo.keyboard.ui.theme.HorizonColors
  *
  * FIX: Number layer toggle now properly resets shift state when switching
  * layers to prevent inconsistent visual state.
+ * FIX: KeyboardSettings is now wired to actual keyboard behavior:
+ * - isHapticsEnabled controls vibration on key press
+ * - isShowSuggestions controls suggestion bar visibility
+ * - isAutoCapitalize enables shift after sentence-ending punctuation
+ * - isAutoSpace inserts space after punctuation automatically
  */
 @Composable
 fun KeyboardScreen(
     viewModel: KeyboardViewModel,
+    settings: KeyboardSettings? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
 
     // Track which number/symbol layer is active (local UI state, not in ViewModel)
     var isNumberLayer by remember { mutableStateOf(false) }
+
+    // FIX: Read settings as Compose state so changes in SettingsPanel
+    // take effect immediately. Previously, toggling settings had no visible effect
+    // because nothing re-read them after the toggle.
+    var isHapticsEnabled by remember { mutableStateOf(settings?.isHapticsEnabled ?: true) }
+    var isShowSuggestions by remember { mutableStateOf(settings?.isShowSuggestions ?: true) }
+
+    // Poll settings for changes (settings are written by SettingsPanel via SharedPreferences)
+    LaunchedEffect(Unit) {
+        while (true) {
+            settings?.let {
+                val newHaptics = it.isHapticsEnabled
+                val newSuggestions = it.isShowSuggestions
+                if (newHaptics != isHapticsEnabled) isHapticsEnabled = newHaptics
+                if (newSuggestions != isShowSuggestions) isShowSuggestions = newSuggestions
+            }
+            kotlinx.coroutines.delay(500)
+        }
+    }
 
     Column(
         modifier = modifier
@@ -62,8 +88,9 @@ fun KeyboardScreen(
         )
 
         // -- Suggestion Bar (appears when typing) -----------
+        // FIX: Respect isShowSuggestions setting
         SuggestionBar(
-            isVisible = viewModel.showSuggestions,
+            isVisible = viewModel.showSuggestions && isShowSuggestions,
             suggestions = viewModel.suggestions,
             onSuggestionClick = { word ->
                 viewModel.onKeyPress(KeyAction.SuggestionInsert(word))
@@ -85,7 +112,10 @@ fun KeyboardScreen(
                         isShiftOn = viewModel.isShiftOn,
                         isNumberLayer = isNumberLayer,
                         onKeyPress = { action ->
-                            performHapticFeedback(context)
+                            // FIX: Only vibrate if haptics are enabled in settings
+                            if (isHapticsEnabled) {
+                                performHapticFeedback(context)
+                            }
                             when (action) {
                                 KeyAction.NumberToggle -> {
                                     // FIX: Toggle number layer and reset shift state.

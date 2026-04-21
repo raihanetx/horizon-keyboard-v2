@@ -135,7 +135,10 @@ fun TranslatePanel(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {
-                            viewModel?.onKeyPress(KeyAction.Character(translatedText))
+                            // FIX: Use InsertText instead of Character for multi-char paste.
+                            // KeyAction.Character applies lowercase()/uppercase() based on shift,
+                            // which corrupts translation text when shift is active.
+                            viewModel?.onKeyPress(KeyAction.InsertText(translatedText))
                         }
                     ) else Modifier
                 )

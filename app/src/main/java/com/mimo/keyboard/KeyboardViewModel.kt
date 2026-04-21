@@ -30,7 +30,7 @@ enum class KeyboardTab {
  * The Magic Button (Terminal tab) uses ScreenLinkStore directly,
  * which is populated by the Accessibility Service (ScreenTextService).
  */
-class KeyboardViewModel : ViewModel() {
+class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewModel() {
 
     // ── Text state ──────────────────────────────────────────
     // FIX: textValue is now synced FROM the InputConnection rather than
@@ -44,6 +44,11 @@ class KeyboardViewModel : ViewModel() {
 
     var currentTab by mutableStateOf(KeyboardTab.KEYBOARD)
         private set
+
+    // FIX: Expose settings so UI can check haptics/suggestions/etc.
+    // Previously, KeyboardSettings was only used by SettingsPanel — toggling
+    // haptics or suggestions had zero effect on keyboard behavior.
+    val keyboardSettings: KeyboardSettings? get() = settings
 
     // ── Cursor state ────────────────────────────────────────
     // FIX: Track cursor position for better suggestion context.
@@ -106,7 +111,7 @@ class KeyboardViewModel : ViewModel() {
                         )
                     }
                     // FIX: Sync textValue from InputConnection after backspace
-                    syncTextFromInputConnection(ic)
+                    syncFromInputConnection(ic)
                 }
             }
             KeyAction.Space -> {
@@ -114,7 +119,16 @@ class KeyboardViewModel : ViewModel() {
                 if (ic != null) {
                     ic.commitText(" ", 1)
                     // FIX: Sync from InputConnection instead of local accumulation
-                    syncTextFromInputConnection(ic)
+                    syncFromInputConnection(ic)
+                }
+                // FIX: Auto-capitalize after sentence-ending punctuation
+                // When auto-capitalize is ON, pressing space after . ! ? turns shift on
+                if (settings?.isAutoCapitalize != false) {
+                    val trimmed = textValue.trimEnd()
+                    val lastChar = trimmed.lastOrNull()
+                    if (lastChar == '.' || lastChar == '!' || lastChar == '?') {
+                        isShiftOn = true
+                    }
                 }
             }
             KeyAction.Done -> {
@@ -130,20 +144,57 @@ class KeyboardViewModel : ViewModel() {
                 if (ic != null) {
                     ic.commitText(char, 1)
                     // FIX: Sync from InputConnection instead of local accumulation
-                    syncTextFromInputConnection(ic)
+                    syncFromInputConnection(ic)
                 }
 
                 if (isShiftOn) {
                     isShiftOn = false
                 }
+
+                // FIX: Auto-space after punctuation when auto-space is ON.
+                // After typing . , ! ? ; : and the setting is enabled,
+                // automatically insert a space so user doesn't have to press space.
+                if (settings?.isAutoSpace != false) {
+                    val autoSpaceAfter = setOf(".", ",", "!", "?", ";", ":")
+                    if (key.char in autoSpaceAfter) {
+                        val ic2 = inputConnection
+                        ic2?.commitText(" ", 1)
+                        if (ic2 != null) syncFromInputConnection(ic2)
+                    }
+                }
             }
             is KeyAction.SuggestionInsert -> {
                 val ic = inputConnection
                 if (ic != null) {
+                    // FIX: Delete the current partial word before inserting suggestion.
+                    // Previously, typing "hel" and tapping "Hello" would produce
+                    // "helHello " instead of "Hello ".
+                    // We read text before cursor, find the last word boundary,
+                    // and delete back to it.
+                    val beforeCursor = ic.getTextBeforeCursor(MAX_SYNC_LENGTH, 0)?.toString() ?: ""
+                    val lastWordStart = beforeCursor.lastIndexOfAny(charArrayOf(' ', '\n', '\t'))
+                    val charsToDelete = if (lastWordStart >= 0) {
+                        beforeCursor.length - lastWordStart - 1
+                    } else {
+                        beforeCursor.length
+                    }
+                    if (charsToDelete > 0) {
+                        ic.deleteSurroundingText(charsToDelete, 0)
+                    }
                     ic.commitText(key.word + " ", 1)
-                    // FIX: Sync from InputConnection instead of local accumulation
-                    syncTextFromInputConnection(ic)
+                    syncFromInputConnection(ic)
                 }
+            }
+            is KeyAction.InsertText -> {
+                val ic = inputConnection
+                if (ic != null) {
+                    // FIX: Commit raw text as-is without shift logic.
+                    // This is used for clipboard paste and translation paste
+                    // where the original casing must be preserved.
+                    ic.commitText(key.text, 1)
+                    syncFromInputConnection(ic)
+                }
+                // InsertText does NOT toggle shift off — it's not a character key
             }
         }
 
@@ -156,8 +207,11 @@ class KeyboardViewModel : ViewModel() {
      * reflects the actual field content including external edits, selections, etc.
      *
      * We read up to MAX_SYNC_LENGTH chars before cursor for suggestion context.
+     *
+     * Public so MiMoInputMethodService can call it from onUpdateCursorAnchorInfo()
+     * when the user taps to reposition the cursor in the text field.
      */
-    private fun syncTextFromInputConnection(ic: InputConnection) {
+    fun syncFromInputConnection(ic: InputConnection) {
         // Read text before cursor for suggestion context
         val beforeCursor = ic.getTextBeforeCursor(MAX_SYNC_LENGTH, 0) ?: ""
         textValue = beforeCursor.toString()
@@ -178,7 +232,10 @@ class KeyboardViewModel : ViewModel() {
      * Updates the suggestion bar visibility and content.
      */
     private fun updateSuggestions() {
-        showSuggestions = textValue.isNotEmpty() && currentTab == KeyboardTab.KEYBOARD
+        // FIX: Respect isShowSuggestions setting — if user disabled suggestions
+        // in SettingsPanel, don't show the suggestion bar regardless of text content.
+        val suggestionsEnabled = settings?.isShowSuggestions != false
+        showSuggestions = suggestionsEnabled && textValue.isNotEmpty() && currentTab == KeyboardTab.KEYBOARD
 
         if (showSuggestions) {
             suggestions = generateSuggestions(textValue)
@@ -192,11 +249,7 @@ class KeyboardViewModel : ViewModel() {
      *
      * FIX: Uses regex split "\\s+" instead of " " to properly handle
      * multiple consecutive spaces without producing empty word tokens.
-     */
-    /**
-     * Generates contextual suggestions based on current input.
-     *
-     * FIX: Now uses cursor position to detect sentence boundaries.
+     * Also uses cursor position to detect sentence boundaries.
      * After sentence-ending punctuation (., !, ?) followed by a space,
      * suggestions switch to sentence-starting words (capitalized).
      */
@@ -232,10 +285,11 @@ class KeyboardViewModel : ViewModel() {
     }
 
     /**
-     * Clears all state (e.g., when input connection resets).
+     * Clears all state (e.g., when input field switches).
      *
-     * FIX: Also clears the inputConnection reference on reset to prevent
-     * stale connection usage after field switch.
+     * Note: This does NOT clear the inputConnection reference — that's handled
+     * separately by MiMoInputMethodService.onFinishInput(). The IC is refreshed
+     * by onStartInput() before reset() is called, so we keep the new IC intact.
      */
     fun reset() {
         textValue = ""
@@ -262,4 +316,12 @@ sealed class KeyAction {
     data object NumberToggle : KeyAction()
     data class Character(val char: String) : KeyAction()
     data class SuggestionInsert(val word: String) : KeyAction()
+
+    /**
+     * FIX: New action for inserting raw multi-character text WITHOUT shift logic.
+     * Used by ClipboardPanel (paste) and TranslatePanel (paste translation).
+     * Unlike KeyAction.Character, this does NOT apply lowercase()/uppercase()
+     * based on shift state — the text is committed exactly as-is.
+     */
+    data class InsertText(val text: String) : KeyAction()
 }
