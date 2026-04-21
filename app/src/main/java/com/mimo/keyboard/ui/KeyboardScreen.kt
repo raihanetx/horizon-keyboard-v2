@@ -34,6 +34,9 @@ import com.mimo.keyboard.ui.theme.HorizonColors
  * │  +- Active Panel OR         │
  * │  +- QWERTY Keyboard         │
  * └─────────────────────────────┘
+ *
+ * FIX: Number layer toggle now properly resets shift state when switching
+ * layers to prevent inconsistent visual state.
  */
 @Composable
 fun KeyboardScreen(
@@ -83,19 +86,27 @@ fun KeyboardScreen(
                         isNumberLayer = isNumberLayer,
                         onKeyPress = { action ->
                             performHapticFeedback(context)
-                            if (action == KeyAction.NumberToggle) {
-                                isNumberLayer = !isNumberLayer
-                            } else {
-                                viewModel.onKeyPress(action)
+                            when (action) {
+                                KeyAction.NumberToggle -> {
+                                    // FIX: Toggle number layer and reset shift state.
+                                    // Previously, switching to number layer with shift active
+                                    // caused visual inconsistency — the shift key appeared active
+                                    // in the number layer which doesn't support shifting.
+                                    isNumberLayer = !isNumberLayer
+                                    if (viewModel.isShiftOn) {
+                                        viewModel.onKeyPress(KeyAction.Shift) // Toggle shift off
+                                    }
+                                }
+                                else -> viewModel.onKeyPress(action)
                             }
                         }
                     )
                 }
                 KeyboardTab.TRANSLATE -> {
-                    TranslatePanel(sourceText = viewModel.textValue)
+                    TranslatePanel(sourceText = viewModel.textValue, viewModel = viewModel)
                 }
                 KeyboardTab.CLIPBOARD -> {
-                    ClipboardPanel()
+                    ClipboardPanel(viewModel = viewModel)
                 }
                 KeyboardTab.TERMINAL -> {
                     // Magic Button — reads screen for URLs via Accessibility, tap to copy/open

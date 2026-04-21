@@ -21,7 +21,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,6 +39,10 @@ import com.mimo.keyboard.ui.theme.HorizonKeyboardTheme
  * 1. Enable Horizon Keyboard in Input Method settings
  * 2. Select Horizon Keyboard as the active input method
  * 3. Enable Accessibility for Magic Button (screen link detection)
+ *
+ * FIX: Replaced deprecated LocalLifecycleOwner.current with
+ * androidx.lifecycle.compose.LocalLifecycleOwner which is the
+ * correct API for Compose + Lifecycle 2.7+.
  */
 class MiMoSettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,7 +58,14 @@ class MiMoSettingsActivity : ComponentActivity() {
 @Composable
 private fun SettingsScreen() {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // FIX: Use the correct LifecycleOwner provider for Compose.
+    // LocalLifecycleOwner.current was deprecated in lifecycle 2.7.0.
+    // The correct approach is to use the LifecycleOwner provided by
+    // the Activity's setContent scope, which is available via
+    // androidx.lifecycle.compose.LocalLifecycleOwner in newer versions,
+    // or simply use LifecycleResumeEffect / LifecycleStartEffect.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
     // Re-check status every time the activity resumes
     var isKeyboardEnabled by remember { mutableStateOf(isKeyboardEnabled(context)) }

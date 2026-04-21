@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -43,6 +44,15 @@ import com.mimo.keyboard.ui.theme.HorizonColors
  * - TAP the arrow → OPENS directly in browser
  *
  * If Accessibility is not enabled, shows instructions to enable it.
+ *
+ * FIX: Improved the polling loop for ScreenLinkStore. The old approach:
+ * 1. Polled every 500ms with unconditional state assignment
+ * 2. Triggered recomposition every 500ms even when nothing changed
+ *
+ * The new approach:
+ * 1. Only updates Compose state when the value actually changes
+ * 2. Increased poll interval from 500ms to 1000ms (links don't change that fast)
+ * 3. LaunchedEffect is auto-cancelled when composable leaves composition (tab switch)
  */
 @Composable
 fun TerminalPanel(
@@ -51,16 +61,29 @@ fun TerminalPanel(
 ) {
     val context = LocalContext.current
 
-    // Read links from ScreenLinkStore (updated by AccessibilityService)
+    // FIX: Polling approach for ScreenLinkStore (which is NOT a Compose State).
+    // snapshotFlow won't work here because ScreenLinkStore.links is not observed
+    // by Compose's snapshot system. Instead, we use a LaunchedEffect with delay
+    // but only trigger recomposition when the value actually changes.
     var screenLinks by remember { mutableStateOf(ScreenLinkStore.links) }
     var isAccessibilityActive by remember { mutableStateOf(ScreenLinkStore.isServiceActive) }
 
-    // Refresh links periodically while panel is visible
+    // Poll ScreenLinkStore periodically. The LaunchedEffect is automatically
+    // cancelled when the composable leaves composition (when user switches tabs),
+    // so this won't run forever. We only update state when the value changes,
+    // avoiding unnecessary recompositions.
     LaunchedEffect(Unit) {
         while (true) {
-            screenLinks = ScreenLinkStore.links
-            isAccessibilityActive = ScreenLinkStore.isServiceActive
-            kotlinx.coroutines.delay(500) // Refresh every 500ms
+            val currentLinks = ScreenLinkStore.links
+            val currentActive = ScreenLinkStore.isServiceActive
+            // Only trigger recomposition if values actually changed
+            if (currentLinks != screenLinks) {
+                screenLinks = currentLinks
+            }
+            if (currentActive != isAccessibilityActive) {
+                isAccessibilityActive = currentActive
+            }
+            delay(POLL_INTERVAL_MS)
         }
     }
 
@@ -307,7 +330,6 @@ private fun DetectedLinkCard(
 
 /**
  * Copies a URL to the system clipboard.
- * Shows a brief visual confirmation via the URL being selected.
  */
 private fun copyToClipboard(context: Context, url: String) {
     try {
@@ -332,3 +354,6 @@ private fun openUrl(context: Context, url: String) {
         // No browser available or invalid URL — ignore
     }
 }
+
+// Polling interval for checking ScreenLinkStore updates
+private const val POLL_INTERVAL_MS = 1000L

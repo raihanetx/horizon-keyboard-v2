@@ -3,11 +3,13 @@ package com.mimo.keyboard.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mimo.keyboard.KeyAction
 import com.mimo.keyboard.ui.theme.HorizonColors
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 enum class KeyStyle {
     NORMAL,
@@ -31,13 +35,27 @@ data class KeyDef(
     val label: String,
     val action: KeyAction,
     val style: KeyStyle = KeyStyle.NORMAL,
-    val weight: Float = 1f
+    val weight: Float = 1f,
+    /**
+     * FIX: Alternative keys shown on long-press.
+     * Maps display label → KeyAction.
+     * For example, 'e' could have alternatives for 'é', 'è', 'ë', 'ê'.
+     * Null means no long-press alternatives.
+     */
+    val alternatives: List<Pair<String, KeyAction>>? = null
 )
 
 /**
  * A single keyboard key composable.
  * The clickable covers the ENTIRE key area for reliable touch response.
- * BUG FIX: offset comes BEFORE clickable so touch target moves with visual.
+ *
+ * FIX: Added long-press support for:
+ * 1. Key alternatives (accents, symbols) shown as a popup
+ * 2. Key repeat for backspace (hold to delete continuously)
+ *
+ * The pressed state visual effect:
+ * - Unpressed: key has 2dp shadow (raised appearance)
+ * - Pressed: key moves down 1dp, shadow reduces to 0dp (pressed in appearance)
  */
 @Composable
 fun KeyboardKey(
@@ -48,6 +66,46 @@ fun KeyboardKey(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+
+    // FIX: Track long-press state for popup and repeat
+    var showAlternatives by remember { mutableStateOf(false) }
+    var isLongPressTriggered by remember { mutableStateOf(false) }
+
+    // FIX: Key repeat for backspace — repeatedly fires delete while held
+    if (keyDef.style == KeyStyle.BACKSPACE) {
+        LaunchedEffect(isPressed) {
+            if (isPressed) {
+                // Initial delay before repeat starts
+                delay(INITIAL_REPEAT_DELAY_MS)
+                isLongPressTriggered = true
+                // Continuous repeat while pressed
+                while (isActive) {
+                    onPress(KeyAction.Backspace)
+                    delay(REPEAT_INTERVAL_MS)
+                }
+            } else {
+                isLongPressTriggered = false
+            }
+        }
+    }
+
+    // FIX: Long-press detection for key alternatives
+    if (keyDef.alternatives != null && keyDef.style != KeyStyle.BACKSPACE) {
+        LaunchedEffect(isPressed) {
+            if (isPressed) {
+                delay(LONG_PRESS_DELAY_MS)
+                if (isActive) {
+                    isLongPressTriggered = true
+                    showAlternatives = true
+                }
+            } else {
+                // Small delay to allow tap on alternative before hiding
+                delay(50)
+                showAlternatives = false
+                isLongPressTriggered = false
+            }
+        }
+    }
 
     val backgroundColor by animateColorAsState(
         targetValue = when {
@@ -73,40 +131,130 @@ fun KeyboardKey(
         else -> FontWeight.Medium
     }
 
-    Box(
-        modifier = modifier
-            .height(46.dp)
-            // FIX #6: offset BEFORE shadow and clickable so touch area moves with visual
-            .then(
-                if (isPressed) Modifier.offset(y = 1.dp) else Modifier
+    // FIX: Wrapper Box for popup positioning
+    Box(modifier = modifier) {
+        // Main key
+        Box(
+            modifier = Modifier
+                .height(46.dp)
+                .then(
+                    if (isPressed) Modifier.offset(y = 1.dp) else Modifier
+                )
+                .shadow(
+                    elevation = if (isPressed) 0.dp else 2.dp,
+                    shape = RoundedCornerShape(8.dp),
+                    ambientColor = HorizonColors.KeyShadow,
+                    spotColor = HorizonColors.KeyShadow
+                )
+                .background(
+                    color = backgroundColor,
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = {
+                        // FIX: For backspace, only fire on short press (not long press)
+                        if (keyDef.style == KeyStyle.BACKSPACE && isLongPressTriggered) {
+                            return@clickable // Repeat is handled by LaunchedEffect
+                        }
+                        // FIX: For keys with alternatives, if long-press was triggered,
+                        // don't fire the main action (user will tap an alternative)
+                        if (isLongPressTriggered && keyDef.alternatives != null) {
+                            return@clickable
+                        }
+                        onPress(keyDef.action)
+                    }
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = when {
+                    keyDef.style == KeyStyle.SPACE -> "SPACE"
+                    else -> keyDef.label
+                },
+                color = HorizonColors.TextPrimary,
+                fontSize = fontSize,
+                fontWeight = fontWeight,
+                letterSpacing = if (keyDef.style == KeyStyle.SPACE) 2.sp else 0.sp
             )
+        }
+
+        // FIX: Long-press alternatives popup
+        if (showAlternatives && keyDef.alternatives != null) {
+            AlternativesPopup(
+                alternatives = keyDef.alternatives,
+                onAlternativeSelected = { action ->
+                    onPress(action)
+                    showAlternatives = false
+                    isLongPressTriggered = false
+                },
+                onDismiss = {
+                    showAlternatives = false
+                    isLongPressTriggered = false
+                }
+            )
+        }
+    }
+}
+
+/**
+ * Popup showing alternative key options on long-press.
+ * Appears above the pressed key with accent styling.
+ */
+@Composable
+private fun AlternativesPopup(
+    alternatives: List<Pair<String, KeyAction>>,
+    onAlternativeSelected: (KeyAction) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .offset(y = (-8).dp)
+            .fillMaxWidth()
             .shadow(
-                elevation = if (isPressed) 0.dp else 2.dp,
+                elevation = 4.dp,
                 shape = RoundedCornerShape(8.dp),
                 ambientColor = HorizonColors.KeyShadow,
                 spotColor = HorizonColors.KeyShadow
             )
             .background(
-                color = backgroundColor,
+                color = HorizonColors.KeyboardSurface,
                 shape = RoundedCornerShape(8.dp)
             )
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = { onPress(keyDef.action) }
-            ),
-        contentAlignment = Alignment.Center
+            .border(
+                width = 1.dp,
+                color = HorizonColors.Accent.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .padding(4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = when {
-                keyDef.style == KeyStyle.SPACE -> "SPACE"
-                else -> keyDef.label
-            },
-            color = HorizonColors.TextPrimary,
-            fontSize = fontSize,
-            fontWeight = fontWeight,
-            letterSpacing = if (keyDef.style == KeyStyle.SPACE) 2.sp else 0.sp
-        )
+        alternatives.forEach { (label, action) ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(HorizonColors.KeyGradientTop, RoundedCornerShape(6.dp))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onAlternativeSelected(action) }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = label,
+                    color = HorizonColors.TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            if (label != alternatives.last().first) {
+                Spacer(modifier = Modifier.height(2.dp))
+            }
+        }
     }
 }
 
@@ -132,3 +280,8 @@ fun KeyboardRow(
         }
     }
 }
+
+// Timing constants for key interactions
+private const val LONG_PRESS_DELAY_MS = 300L
+private const val INITIAL_REPEAT_DELAY_MS = 400L
+private const val REPEAT_INTERVAL_MS = 50L

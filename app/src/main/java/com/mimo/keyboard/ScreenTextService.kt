@@ -21,8 +21,17 @@ import android.view.accessibility.AccessibilityNodeInfo
  *
  * Privacy: This service only reads text to find URLs. It does NOT collect,
  * store, or transmit any personal data. No keyboard input is read.
+ *
+ * FIX: Added throttling to prevent scanning on every accessibility event
+ * (which can fire hundreds of times per second during scrolling).
+ * FIX: Added recursion depth limit to prevent StackOverflow on deep hierarchies.
+ * FIX: Removed redundant (?i) in regex since RegexOption.IGNORE_CASE is already set.
  */
 class ScreenTextService : AccessibilityService() {
+
+    // FIX: Throttle scans to at most once per SCAN_THROTTLE_MS
+    // to prevent excessive CPU usage during rapid accessibility events
+    private var lastScanTimeMs: Long = 0
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -55,13 +64,22 @@ class ScreenTextService : AccessibilityService() {
     /**
      * Scans the current screen's accessibility tree for text containing URLs.
      * Traverses all visible nodes and extracts text content.
+     *
+     * FIX: Throttled to run at most once per SCAN_THROTTLE_MS to prevent
+     * excessive scanning during rapid accessibility events (scrolling, animations).
      */
     private fun scanScreenForLinks() {
+        val now = System.currentTimeMillis()
+        if (now - lastScanTimeMs < SCAN_THROTTLE_MS) {
+            return // Throttle: skip this scan
+        }
+        lastScanTimeMs = now
+
         val root = rootInActiveWindow ?: return
         val allText = StringBuilder()
 
         try {
-            collectTextFromNode(root, allText)
+            collectTextFromNode(root, allText, maxDepth = MAX_NODE_DEPTH)
             val textContent = allText.toString()
 
             if (textContent.isNotEmpty()) {
@@ -79,10 +97,21 @@ class ScreenTextService : AccessibilityService() {
     /**
      * Recursively collects text from an accessibility node and its children.
      * Limits depth and text length to prevent performance issues.
+     *
+     * FIX: Added maxDepth parameter to prevent StackOverflowError on
+     * deeply nested view hierarchies (some apps have 100+ depth levels).
      */
-    private fun collectTextFromNode(node: AccessibilityNodeInfo, builder: StringBuilder) {
-        // Safety limit: don't collect more than 50000 chars
-        if (builder.length > 50000) return
+    private fun collectTextFromNode(
+        node: AccessibilityNodeInfo,
+        builder: StringBuilder,
+        currentDepth: Int = 0,
+        maxDepth: Int = MAX_NODE_DEPTH
+    ) {
+        // Safety limit: don't collect more than MAX_TEXT_LENGTH chars
+        if (builder.length > MAX_TEXT_LENGTH) return
+
+        // FIX: Depth limit to prevent StackOverflow on deep hierarchies
+        if (currentDepth > maxDepth) return
 
         // Get text from this node
         node.text?.let { text ->
@@ -100,7 +129,7 @@ class ScreenTextService : AccessibilityService() {
         for (i in 0 until node.childCount) {
             try {
                 node.getChild(i)?.let { child ->
-                    collectTextFromNode(child, builder)
+                    collectTextFromNode(child, builder, currentDepth + 1, maxDepth)
                 }
             } catch (e: Exception) {
                 // Child access can fail — skip this child
@@ -111,10 +140,14 @@ class ScreenTextService : AccessibilityService() {
     /**
      * Extracts URLs from a text string using regex.
      * Supports http://, https://, ftp:// and www. patterns.
+     *
+     * FIX: Removed redundant (?i) inline flag since RegexOption.IGNORE_CASE
+     * already makes the entire pattern case-insensitive. Having both was
+     * confusing and redundant.
      */
     private fun extractUrls(text: String): List<String> {
         val urlRegex = Regex(
-            """(?i)\b((?:https?://|ftp://|www\.)[^\s<>\[\]{}'"`|\\^~]+)""",
+            """\b((?:https?://|ftp://|www\.)[^\s<>\[\]{}'"`|\\^~]+)""",
             RegexOption.IGNORE_CASE
         )
         return urlRegex.findAll(text)
@@ -128,5 +161,16 @@ class ScreenTextService : AccessibilityService() {
             .filter { it.length > 7 }
             .distinct()
             .toList()
+    }
+
+    companion object {
+        // Minimum time between scans in milliseconds
+        private const val SCAN_THROTTLE_MS = 1000L
+
+        // Maximum text length to collect from accessibility tree
+        private const val MAX_TEXT_LENGTH = 50000
+
+        // Maximum depth for accessibility node tree traversal
+        private const val MAX_NODE_DEPTH = 50
     }
 }
