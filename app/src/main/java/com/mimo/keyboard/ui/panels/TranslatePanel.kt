@@ -207,18 +207,33 @@ private fun translateText(text: String, isEnToEs: Boolean): String {
         // Try matching phrases of decreasing length (longest match first)
         var matched = false
         for (len in minOf(MAX_PHRASE_LENGTH, words.size - i) downTo 1) {
-            val phrase = words.subList(i, i + len).joinToString(" ").lowercase()
+            // BUG FIX: Strip leading/trailing punctuation from each word before
+            // joining into a phrase for dictionary lookup. Previously, words like
+            // "Hello!" or "world." would never match dictionary keys because the
+            // dictionary has "hello" and "world" without punctuation.
+            //
+            // We strip common punctuation chars (.,!?;:,'") from both ends of
+            // each word, then join the stripped words for the lookup key.
+            // Punctuation is preserved in the output by re-attaching it after
+            // translation.
+            val strippedWords = words.subList(i, i + len).map { stripPunctuation(it) }
+            val phrase = strippedWords.joinToString(" ").lowercase()
             val translated = dict[phrase]
             if (translated != null) {
                 // Preserve capitalization of the first word
                 val firstWord = words[i]
-                result.add(
-                    when {
-                        firstWord.isNotEmpty() && firstWord[0].isUpperCase() ->
-                            translated.replaceFirstChar { it.uppercase() }
-                        else -> translated
-                    }
-                )
+                val isCapitalized = firstWord.isNotEmpty() && firstWord[0].isUpperCase()
+                val translatedWord = when {
+                    isCapitalized -> translated.replaceFirstChar { it.uppercase() }
+                    else -> translated
+                }
+                // BUG FIX: Re-attach trailing punctuation from the LAST word
+                // in the matched phrase. For example, if the user typed "Hello!"
+                // and "Hello" translates to "Hola", we want "Hola!" not "Hola".
+                // We only re-attach from the last word to avoid duplicating
+                // punctuation that was between words in the phrase.
+                val trailingPunct = extractTrailingPunctuation(words[i + len - 1])
+                result.add(translatedWord + trailingPunct)
                 i += len
                 matched = true
                 break
@@ -226,13 +241,37 @@ private fun translateText(text: String, isEnToEs: Boolean): String {
         }
 
         if (!matched) {
-            // No dictionary match — keep original word
+            // No dictionary match — keep original word with its punctuation
             result.add(words[i])
             i++
         }
     }
 
     return result.joinToString(" ")
+}
+
+/**
+ * Strips leading and trailing punctuation from a word for dictionary lookup.
+ * Preserves internal punctuation (e.g., apostrophes in "don't").
+ */
+private fun stripPunctuation(word: String): String {
+    val punctuation = setOf('.', ',', '!', '?', ';', ':', '\'', '"', '(', ')')
+    var start = 0
+    var end = word.length
+    while (start < end && word[start] in punctuation) start++
+    while (end > start && word[end - 1] in punctuation) end--
+    return word.substring(start, end)
+}
+
+/**
+ * Extracts trailing punctuation from a word for re-attachment after translation.
+ * Returns the punctuation string (e.g., "!" from "Hello!"), or empty string if none.
+ */
+private fun extractTrailingPunctuation(word: String): String {
+    val punctuation = setOf('.', ',', '!', '?', ';', ':', '\'', '"')
+    var end = word.length
+    while (end > 0 && word[end - 1] in punctuation) end--
+    return word.substring(end)
 }
 
 // Maximum number of words in a multi-word dictionary key

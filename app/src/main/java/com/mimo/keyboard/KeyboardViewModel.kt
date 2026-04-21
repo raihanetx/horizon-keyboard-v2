@@ -301,15 +301,23 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
         val sentenceEndPuncts = setOf(".", "!", "?")
 
         // BUG FIX: Auto-space now checks context to avoid inserting spaces
-        // inside numbers (3.14, 1,000) and abbreviations (Dr., U.S., example.com).
-        // Previous code inserted a space after EVERY period/comma, which broke
-        // numeric input and URL/email typing.
+        // inside numbers (3.14, 1,000).
         //
-        // Logic: Don't auto-space if the character BEFORE the punctuation is
-        // a letter or digit — that indicates we're mid-word or mid-number.
-        // For example:
-        //   "3." → digit before '.' → no auto-space (it's a decimal)
-        //   "a." → letter before '.' → no auto-space (abbreviation)
+        // Previous code used isLetterOrDigit() which was TOO AGGRESSIVE — it
+        // blocked auto-space after EVERY normal sentence ending like "Hello."
+        // because 'o' is a letter. This made auto-space essentially NEVER work
+        // for the most common case (periods after words).
+        //
+        // Root cause: the check was designed for "3.14" decimals and abbreviations
+        // like "Dr.", but isLetterOrDigit() also catches normal word endings.
+        // In reality, "Dr." + space is correct ("Dr. Smith"), and auto-capitalizing
+        // after it is also correct. Only decimal numbers like "3.14" need suppression.
+        //
+        // Fix: Only suppress auto-space when the char before punctuation is a DIGIT.
+        // This correctly handles:
+        //   "3." → digit before '.' → no auto-space (decimal number)
+        //   "1," → digit before ',' → no auto-space (thousands separator)
+        //   "Hello." → letter before '.' → auto-space OK (normal sentence)
         //   " ." → space before '.' → auto-space OK (sentence end)
         //   start-of-field + "." → auto-space OK (sentence end)
         if (settings?.isAutoSpace != false && char in autoSpacePuncts) {
@@ -323,8 +331,9 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
                     ' '  // Treat as sentence context
                 }
             }
-            // Only auto-space if the char before punctuation is NOT a letter/digit
-            if (!charBeforePunct.isLetterOrDigit()) {
+            // Only auto-space if the char before punctuation is NOT a digit
+            // (digit before punctuation = decimal number like 3.14)
+            if (!charBeforePunct.isDigit()) {
                 val ic = inputConnection
                 ic?.commitText(" ", 1)
                 if (ic != null) syncFromInputConnection(ic)
@@ -332,9 +341,13 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
         }
 
         // BUG FIX: Auto-capitalize only after sentence-ending punctuation that
-        // is NOT preceded by a letter or digit. Previously, typing "3.14" or
-        // "Dr." would trigger auto-capitalize, turning shift on unexpectedly.
-        // Same context check as auto-space above.
+        // is NOT preceded by a digit. Previously, isLetterOrDigit() was used which
+        // blocked auto-capitalize after ALL normal sentences like "Hello." because
+        // 'o' is a letter. This made auto-capitalize NEVER work for normal typing.
+        //
+        // Fix: Only suppress when the char before punctuation is a DIGIT (decimal
+        // numbers like "3."). Letters before sentence-ending punctuation are normal
+        // word endings and SHOULD trigger auto-capitalize.
         if (settings?.isAutoCapitalize != false && char in sentenceEndPuncts) {
             val charBeforePunct = textValue.trimEnd().let { trimmed ->
                 if (trimmed.length >= 2) {
@@ -343,7 +356,7 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
                     ' '  // Start of field — always capitalize after sentence end
                 }
             }
-            if (!charBeforePunct.isLetterOrDigit()) {
+            if (!charBeforePunct.isDigit()) {
                 isShiftOn = true
             }
         }
@@ -354,22 +367,25 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
      * Checks if the text before cursor ends with sentence-ending punctuation
      * (. ! ?) followed by this space, and turns shift ON if so.
      *
-     * BUG FIX: Also checks that the punctuation is NOT preceded by a letter or
-     * digit (same context check as handlePostCharLogic). Without this, typing
-     * "3. " or "Dr. " would incorrectly activate shift.
+     * BUG FIX: Only suppresses auto-capitalize when the punctuation is preceded
+     * by a DIGIT (decimal numbers like "3. "). The previous isLetterOrDigit()
+     * check blocked auto-capitalize after ALL normal sentences like "Hello. "
+     * because 'o' is a letter — making auto-capitalize never work in practice.
+     * Letters before sentence-ending punctuation are normal word endings and
+     * SHOULD trigger auto-capitalize.
      */
     private fun handleAutoCapitalize() {
         if (settings?.isAutoCapitalize != false) {
             val trimmed = textValue.trimEnd()
             val lastChar = trimmed.lastOrNull()
             if (lastChar == '.' || lastChar == '!' || lastChar == '?') {
-                // Check context: punctuation should NOT be preceded by letter/digit
+                // Check context: punctuation should NOT be preceded by a digit
                 val charBeforePunct = if (trimmed.length >= 2) {
                     trimmed[trimmed.length - 2]
                 } else {
                     ' '  // Start of field — always capitalize
                 }
-                if (!charBeforePunct.isLetterOrDigit()) {
+                if (!charBeforePunct.isDigit()) {
                     isShiftOn = true
                 }
             }
