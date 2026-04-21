@@ -130,19 +130,29 @@ class MiMoInputMethodService : InputMethodService() {
         super.onStartInput(editorInfo, restarting)
         viewModel?.inputConnection = currentInputConnection
 
-        // FIX: Reset ViewModel state on ALL field switches, not just when restarting=true.
-        // Previously, switching between different input fields without restarting=true
-        // would leak stale textValue and suggestions from the previous field.
-        // This is safe because the InputConnection is refreshed for every new field.
-        viewModel?.reset()
-
-        // FIX: Sync textValue from the new InputConnection after reset.
-        // Without this, switching to a field that already has text leaves the ViewModel
-        // with empty textValue — no suggestions appear until the user types something.
-        // This is especially noticeable when tapping between pre-filled form fields.
-        val ic = currentInputConnection
-        if (ic != null) {
-            viewModel?.syncFromInputConnection(ic)
+        // FIX: Only reset ViewModel state when switching to a NEW input field.
+        // When restarting=true, the user is still in the SAME field — the connection
+        // was just re-established (e.g., after configuration change). Resetting on
+        // restart would:
+        // 1. Lose the user's shift state mid-sentence
+        // 2. Clear the number layer toggle state unnecessarily
+        // 3. Clear textValue even though the field content hasn't changed
+        //
+        // For new fields (restarting=false), we reset everything and re-sync from
+        // the new InputConnection so pre-filled field content appears immediately.
+        if (!restarting) {
+            viewModel?.reset()
+            val ic = currentInputConnection
+            if (ic != null) {
+                viewModel?.syncFromInputConnection(ic)
+            }
+        } else {
+            // Connection restarted for same field — just re-sync text position
+            // in case the cursor moved while we were disconnected
+            val ic = currentInputConnection
+            if (ic != null) {
+                viewModel?.syncFromInputConnection(ic)
+            }
         }
     }
 

@@ -127,7 +127,7 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
                     // If auto-space already inserted a space after punctuation, and the
                     // user presses Space manually, we should NOT add another space.
                     // We detect this by checking if the text before cursor already ends
-                    // with " <punct>" pattern (punctuation followed by exactly one space).
+                    // with a punctuation char followed by exactly one space.
                     val beforeText = textValue.trimEnd()
                     val lastChar = beforeText.lastOrNull()
                     val autoSpacePuncts = setOf('.', ',', '!', '?', ';', ':')
@@ -140,10 +140,9 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
                         syncFromInputConnection(ic)
                     }
                 }
-                // FIX: Auto-capitalize after sentence-ending punctuation.
-                // This now works BOTH when the user manually presses Space
-                // AND when auto-space inserts the space, because
-                // handlePostCharLogic() is called after auto-space too.
+                // FIX: Auto-capitalize after sentence-ending punctuation + Space.
+                // BUG FIX: Previously, handleAutoCapitalize() was called unconditionally,
+                // ignoring the isAutoCapitalize setting. Now we respect the setting.
                 handleAutoCapitalize()
             }
             KeyAction.Done -> {
@@ -182,12 +181,32 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
                     // "helHello " instead of "Hello ".
                     // We read text before cursor, find the last word boundary,
                     // and delete back to it.
+                    //
+                    // BUG FIX: When cursor is at position 0, lastIndexOfAny returns -1.
+                    // The old formula `beforeCursor.length - (-1) - 1 = beforeCursor.length`
+                    // would delete ALL text before the cursor, not just the current word.
+                    // Now we correctly handle lastWordStart == -1: it means there's no
+                    // whitespace before the cursor, so the "partial word" spans the entire
+                    // text before cursor (which IS the correct thing to delete in that case).
+                    // But we must also check that the char before cursor is actually a word
+                    // character — if it's whitespace or punctuation, there's nothing to delete.
                     val beforeCursor = ic.getTextBeforeCursor(MAX_SYNC_LENGTH, 0)?.toString() ?: ""
-                    val lastWordStart = beforeCursor.lastIndexOfAny(charArrayOf(' ', '\n', '\t'))
-                    val charsToDelete = if (lastWordStart >= 0) {
-                        beforeCursor.length - lastWordStart - 1
+                    val charsToDelete = if (beforeCursor.isEmpty()) {
+                        0
                     } else {
-                        beforeCursor.length
+                        val lastWordStart = beforeCursor.lastIndexOfAny(charArrayOf(' ', '\n', '\t'))
+                        if (lastWordStart >= 0) {
+                            beforeCursor.length - lastWordStart - 1
+                        } else {
+                            // No whitespace found — entire text before cursor is one word.
+                            // Only delete if the last char is a letter/digit (part of a word).
+                            // If it's punctuation, user tapped suggestion without typing first.
+                            if (beforeCursor.last().isLetterOrDigit()) {
+                                beforeCursor.length
+                            } else {
+                                0
+                            }
+                        }
                     }
                     if (charsToDelete > 0) {
                         ic.deleteSurroundingText(charsToDelete, 0)

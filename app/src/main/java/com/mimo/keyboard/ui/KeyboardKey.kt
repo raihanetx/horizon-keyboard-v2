@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -71,18 +72,32 @@ fun KeyboardKey(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
-    // FIX: Track long-press state for popup and repeat
+    // FIX: Track long-press state for popup and repeat.
+    // consumeNextClick is set to true when a long-press fires, and consumed
+    // by the onClick handler. This prevents the race condition where
+    // isLongPressTriggered is reset to false (in LaunchedEffect's else branch)
+    // before onClick checks it, causing the primary action to fire after a
+    // long-press release.
     var showAlternatives by remember { mutableStateOf(false) }
     var isLongPressTriggered by remember { mutableStateOf(false) }
+    var consumeNextClick by remember { mutableStateOf(false) }
 
     // FIX: Key repeat for backspace — repeatedly fires delete while held.
     // Uses longPressDelayMs from settings instead of hardcoded constant.
+    //
+    // BUG FIX: Previous code set isLongPressTriggered = false when isPressed
+    // became false, but there was a race with onClick: the LaunchedEffect's
+    // else branch could run and reset isLongPressTriggered BEFORE onClick
+    // checked it, causing an extra backspace on release. Now we use
+    // consumeNextClick as a one-shot flag that onClick reads and clears,
+    // which is immune to this race.
     if (keyDef.style == KeyStyle.BACKSPACE) {
         LaunchedEffect(isPressed) {
             if (isPressed) {
                 // Initial delay before repeat starts
                 delay(longPressDelayMs + 100L)  // Slightly longer than long-press for repeat
                 isLongPressTriggered = true
+                consumeNextClick = true  // FIX: Mark that next onClick should be suppressed
                 // Continuous repeat while pressed
                 while (isActive) {
                     onPress(KeyAction.Backspace)
@@ -90,34 +105,36 @@ fun KeyboardKey(
                 }
             } else {
                 isLongPressTriggered = false
+                // Note: do NOT reset consumeNextClick here — onClick may not
+                // have run yet. onClick will consume and reset it.
             }
         }
     }
 
     // FIX: Long-press detection for key alternatives.
-    // Root cause of popup-dismiss bug: The old code set showAlternatives = false
-    // after a 50ms delay when isPressed became false. This meant the popup was
-    // dismissed almost instantly when the user lifted their finger — they never
-    // got a chance to tap an alternative.
     //
-    // The fix: When isPressed becomes false, we only reset isLongPressTriggered
-    // (so the main key's onClick doesn't fire the primary action). We do NOT
-    // dismiss the popup here — the Popup composable's own dismiss handling
-    // (dismissOnClickOutside, dismissOnBackPress, onDismissRequest) manages
-    // the popup lifecycle. The user can lift their finger after long-pressing
-    // and then tap an alternative at their leisure.
+    // BUG FIX: Previous code had a race condition — when isPressed became
+    // false, isLongPressTriggered was reset before onClick could check it,
+    // causing the primary key action to fire after releasing a long-press.
+    // Now we use consumeNextClick as a one-shot flag: set during long-press,
+    // read and cleared by onClick. This guarantees that if a long-press
+    // occurred, the subsequent onClick is always suppressed.
+    //
+    // The popup stays visible after release (dismissed by Popup's own
+    // dismiss handling: dismissOnClickOutside, dismissOnBackPress),
+    // so the user can tap an alternative at their leisure.
     if (keyDef.alternatives != null && keyDef.style != KeyStyle.BACKSPACE) {
         LaunchedEffect(isPressed) {
             if (isPressed) {
                 delay(longPressDelayMs)
                 if (isActive) {
                     isLongPressTriggered = true
+                    consumeNextClick = true  // FIX: Mark that next onClick should be suppressed
                     showAlternatives = true
                 }
             } else {
-                // Only reset the long-press flag so the main key's onClick
-                // doesn't fire the primary action. The popup stays visible
-                // until the user taps an alternative or dismisses it.
+                // Only reset the long-press flag. Do NOT reset consumeNextClick
+                // here — onClick hasn't run yet and needs to see it.
                 isLongPressTriggered = false
             }
         }
@@ -177,14 +194,14 @@ fun KeyboardKey(
                     interactionSource = interactionSource,
                     indication = null,
                     onClick = {
-                        // FIX: For backspace, only fire on short press (not long press)
-                        if (keyDef.style == KeyStyle.BACKSPACE && isLongPressTriggered) {
-                            return@clickable // Repeat is handled by LaunchedEffect
-                        }
-                        // FIX: For keys with alternatives, if long-press was triggered,
-                        // don't fire the main action (user will tap an alternative)
-                        if (isLongPressTriggered && keyDef.alternatives != null) {
-                            return@clickable
+                        // FIX: Use consumeNextClick to prevent firing the primary action
+                        // after a long-press. The previous isLongPressTriggered check
+                        // had a race condition — LaunchedEffect could reset it before
+                        // this onClick ran. consumeNextClick is a one-shot flag that
+                        // this handler reads and clears, making it race-proof.
+                        if (consumeNextClick) {
+                            consumeNextClick = false
+                            return@clickable  // Long-press handled it; skip primary action
                         }
                         onPress(keyDef.action)
                     }
@@ -208,6 +225,12 @@ fun KeyboardKey(
         // Previously, the popup was an inline Box that could be clipped by the
         // parent Row/Column for top-row keys where vertical space is limited.
         if (showAlternatives && keyDef.alternatives != null) {
+            // FIX: Convert dp offset to pixels for the Popup offset parameter.
+            // Previously used raw pixel value -8 which was too small on high-density
+            // screens (~2.6dp on a 3x density device). Now properly converts from dp.
+            val density = LocalDensity.current
+            val popupOffsetY = with(density) { (-8).dp.roundToPx() }
+
             Popup(
                 properties = PopupProperties(
                     focusable = true,
@@ -217,9 +240,10 @@ fun KeyboardKey(
                 onDismissRequest = {
                     showAlternatives = false
                     isLongPressTriggered = false
+                    consumeNextClick = false
                 },
                 alignment = Alignment.TopCenter,
-                offset = androidx.compose.ui.unit.IntOffset(0, -8)
+                offset = androidx.compose.ui.unit.IntOffset(0, popupOffsetY)
             ) {
                 AlternativesPopup(
                     alternatives = keyDef.alternatives,
@@ -227,10 +251,12 @@ fun KeyboardKey(
                         onPress(action)
                         showAlternatives = false
                         isLongPressTriggered = false
+                        consumeNextClick = false
                     },
                     onDismiss = {
                         showAlternatives = false
                         isLongPressTriggered = false
+                        consumeNextClick = false
                     }
                 )
             }

@@ -54,7 +54,9 @@ fun ClipboardPanel(
     // Track clipboard clips — we store a history of past clips
     var clipboardHistory by remember { mutableStateOf(readClipboardHistory(clipboardManager)) }
 
-    // Poll clipboard for changes while panel is visible
+    // Poll clipboard for changes while panel is visible.
+    // This LaunchedEffect is automatically cancelled when the composable leaves
+    // composition (user switches to a different tab), so it doesn't poll forever.
     LaunchedEffect(Unit) {
         while (true) {
             val currentClip = readCurrentClipboard(clipboardManager)

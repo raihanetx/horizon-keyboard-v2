@@ -184,24 +184,59 @@ fun TranslatePanel(
 }
 
 /**
- * Translates text word-by-word using a local dictionary.
- * Falls back to the original word if no translation is found.
+ * Translates text using a local dictionary.
+ *
+ * BUG FIX: Previous implementation split text on whitespace first, then looked up
+ * each individual word. This meant multi-word dictionary keys like "lo siento" or
+ * "a lo largo" could NEVER match — they were split into "lo" + "siento" before
+ * lookup, and each part was looked up individually.
+ *
+ * New approach: greedy multi-word matching. We scan the input from left to right,
+ * trying the longest possible phrase match first (up to MAX_PHRASE_LENGTH words).
+ * If a phrase matches a dictionary key, we use it and skip those words.
+ * If no phrase match, we fall back to single-word lookup.
+ * This correctly handles both single-word and multi-word dictionary entries.
  */
 private fun translateText(text: String, isEnToEs: Boolean): String {
     val dict = if (isEnToEs) enToEsDictionary else esToEnDictionary
-    return text.split("\\s+".toRegex())
-        .joinToString(" ") { word ->
-            val lower = word.lowercase()
-            val translated = dict[lower]
-            // Preserve capitalization: if original starts with uppercase, capitalize result
-            when {
-                translated != null && word.isNotEmpty() && word[0].isUpperCase() ->
-                    translated.replaceFirstChar { it.uppercase() }
-                translated != null -> translated
-                else -> word  // No translation found, keep original
+    val words = text.split("\\s+".toRegex())
+    val result = mutableListOf<String>()
+    var i = 0
+
+    while (i < words.size) {
+        // Try matching phrases of decreasing length (longest match first)
+        var matched = false
+        for (len in minOf(MAX_PHRASE_LENGTH, words.size - i) downTo 1) {
+            val phrase = words.subList(i, i + len).joinToString(" ").lowercase()
+            val translated = dict[phrase]
+            if (translated != null) {
+                // Preserve capitalization of the first word
+                val firstWord = words[i]
+                result.add(
+                    when {
+                        firstWord.isNotEmpty() && firstWord[0].isUpperCase() ->
+                            translated.replaceFirstChar { it.uppercase() }
+                        else -> translated
+                    }
+                )
+                i += len
+                matched = true
+                break
             }
         }
+
+        if (!matched) {
+            // No dictionary match — keep original word
+            result.add(words[i])
+            i++
+        }
+    }
+
+    return result.joinToString(" ")
 }
+
+// Maximum number of words in a multi-word dictionary key
+private const val MAX_PHRASE_LENGTH = 4
 
 // English → Spanish dictionary (common words)
 private val enToEsDictionary = mapOf(
@@ -216,7 +251,7 @@ private val enToEsDictionary = mapOf(
     "is" to "es", "am" to "soy", "are" to "son", "was" to "fue", "were" to "fueron",
     "be" to "ser", "have" to "tener", "has" to "tiene", "had" to "tuvo",
     "do" to "hacer", "does" to "hace", "did" to "hizo",
-    "will" to "will", "would" to "would", "can" to "poder", "could" to "podría",
+    "will" to "futuro", "would" to "condicional", "can" to "poder", "could" to "podría",
     "should" to "debería", "may" to "puede", "might" to "podría",
     "go" to "ir", "going" to "yendo", "went" to "fue", "gone" to "ido",
     "come" to "venir", "came" to "vino", "coming" to "viniendo",

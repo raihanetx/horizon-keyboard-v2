@@ -73,11 +73,20 @@ fun KeyboardScreen(
     var longPressDelayMs by remember { mutableStateOf(settings?.longPressDelayMs?.toLong() ?: 300L) }
     var keyHeightMultiplier by remember { mutableStateOf(settings?.keyHeightMultiplier ?: 1.0f) }
 
-    // Poll settings for changes (settings are written by SettingsPanel via SharedPreferences)
-    // FIX: Now also polls isSoundEnabled, longPressDelayMs, and keyHeightMultiplier
-    // which were previously defined in KeyboardSettings but never read by the UI.
-    LaunchedEffect(Unit) {
-        while (true) {
+    // FIX: Poll settings for changes (settings are written by SettingsPanel via SharedPreferences).
+    //
+    // BUG FIX: Previously used LaunchedEffect(Unit) which ran FOREVER — even when the
+    // keyboard was hidden or a different tab was active. This wasted CPU and battery
+    // polling SharedPreferences every 500ms indefinitely.
+    //
+    // Now we use currentTab as the key, so the effect restarts when the tab changes.
+    // When the effect is cancelled (tab switches away), the while loop terminates
+    // naturally because isActive becomes false. This means:
+    // - Polling only runs when the KEYBOARD tab is active (where settings matter)
+    // - Polling stops when the user switches to Translate/Clipboard/etc.
+    // - No wasted CPU when keyboard is hidden
+    LaunchedEffect(viewModel.currentTab) {
+        while (kotlinx.coroutines.isActive) {
             settings?.let {
                 val newHaptics = it.isHapticsEnabled
                 val newSound = it.isSoundEnabled

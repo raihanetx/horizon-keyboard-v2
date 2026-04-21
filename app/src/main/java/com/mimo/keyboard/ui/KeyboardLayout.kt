@@ -111,16 +111,20 @@ object KeyboardLayout {
             KeyDef("\"", KeyAction.Character("\"")),
             KeyDef("%", KeyAction.Character("%"))
         ),
-        // Row 3: More symbols with shift & backspace
+        // Row 3: More symbols with backspace
+        // FIX: Replaced the shift key (⇧) with "#" symbol key. The shift key
+        // in the number layer was useless — there are no letters to capitalize,
+        // and it only caused visual confusion (shift highlighted but did nothing).
+        // Added "#" and "~" as useful symbol alternatives.
         listOf(
-            KeyDef("⇧", KeyAction.Shift, KeyStyle.SPECIAL, 1.4f),
+            KeyDef("#", KeyAction.Character("#"), KeyStyle.NORMAL, 1.4f),
             KeyDef(".", KeyAction.Character(".")),
             KeyDef(",", KeyAction.Character(",")),
             KeyDef("?", KeyAction.Character("?")),
             KeyDef("!", KeyAction.Character("!")),
             KeyDef("'", KeyAction.Character("'")),
             KeyDef("_", KeyAction.Character("_")),
-            KeyDef("+", KeyAction.Character("+")),
+            KeyDef("~", KeyAction.Character("~")),
             KeyDef("⌫", KeyAction.Backspace, KeyStyle.BACKSPACE, 1.4f)
         ),
         // Row 4: Bottom utility row
