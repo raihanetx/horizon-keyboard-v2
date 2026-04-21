@@ -22,8 +22,7 @@ object KeyboardLayout {
         // FIX: Vowels have accent alternatives on long-press
         listOf(
             KeyDef("q", KeyAction.Character("q")),
-            KeyDef("w", KeyAction.Character("w"),
-                alternatives = listOf("ñ" to KeyAction.Character("ñ"))),
+            KeyDef("w", KeyAction.Character("w")),
             KeyDef("e", KeyAction.Character("e"),
                 alternatives = listOf("é" to KeyAction.Character("é"), "è" to KeyAction.Character("è"), "ê" to KeyAction.Character("ê"), "ë" to KeyAction.Character("ë"))),
             KeyDef("r", KeyAction.Character("r")),

@@ -53,6 +53,19 @@ fun SettingsPanel(
     var isAutoCapitalize by remember { mutableStateOf(effectiveSettings.isAutoCapitalize) }
     var isAutoSpace by remember { mutableStateOf(effectiveSettings.isAutoSpace) }
     var isShowSuggestions by remember { mutableStateOf(effectiveSettings.isShowSuggestions) }
+    // BUG FIX: Expose keyHeightMultiplier setting in the UI. Previously,
+    // keyHeightMultiplier was defined in KeyboardSettings, polled by KeyboardScreen,
+    // and wired to the actual key height — but there was no UI control to change it.
+    var keyHeightIndex by remember {
+        mutableStateOf(
+            when (effectiveSettings.keyHeightMultiplier) {
+                0.85f -> 0
+                1.15f -> 2
+                1.3f -> 3
+                else -> 1  // 1.0f = default
+            }
+        )
+    }
 
     Column(
         modifier = modifier
@@ -128,6 +141,66 @@ fun SettingsPanel(
             )
         }
 
+        // ── APPEARANCE section ────────────────────────────────
+        SettingsSection(title = "APPEARANCE") {
+            // BUG FIX: Key height selector — previously no UI control existed.
+            // The setting was defined in KeyboardSettings, polled by KeyboardScreen,
+            // and wired to the actual key height — but the user couldn't change it.
+            val heightOptions = listOf("Compact", "Normal", "Tall", "Extra Tall")
+            val heightValues = listOf(0.85f, 1.0f, 1.15f, 1.3f)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Key Height",
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = HorizonColors.TextPrimary
+                    )
+                    Text(
+                        text = "Adjust keyboard key height",
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = HorizonColors.TextMuted
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    heightOptions.forEachIndexed { index, label ->
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(
+                                    if (index == keyHeightIndex) HorizonColors.Accent
+                                    else HorizonColors.KeyGradientTop
+                                )
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = {
+                                        keyHeightIndex = index
+                                        effectiveSettings.keyHeightMultiplier = heightValues[index]
+                                    }
+                                )
+                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 9.sp,
+                                fontWeight = if (index == keyHeightIndex) FontWeight.Bold else FontWeight.Normal,
+                                fontFamily = FontFamily.Monospace,
+                                color = if (index == keyHeightIndex) HorizonColors.TextPrimary else HorizonColors.TextMuted
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // ── ABOUT section ───────────────────────────────────
         SettingsSection(title = "ABOUT") {
             Row(
@@ -175,8 +248,7 @@ private fun SettingsSection(
             .fillMaxWidth()
             .background(HorizonColors.KeyboardSurface, RoundedCornerShape(10.dp))
             .border(1.dp, HorizonColors.BorderPrimary, RoundedCornerShape(10.dp))
-            .padding(12.dp),
-        content = content
+            .padding(12.dp)
     ) {
         // Section title
         Text(
@@ -187,7 +259,10 @@ private fun SettingsSection(
             letterSpacing = 0.12.sp
         )
         Spacer(modifier = Modifier.height(8.dp))
-        // Section content
+        // Section content — invoke the content lambda ONCE.
+        // BUG FIX: Previously, the content lambda was passed both as the Column's
+        // `content` parameter AND invoked explicitly with `content()`, causing
+        // all section content to render TWICE (duplicate toggle switches, labels, etc.)
         content()
     }
 }

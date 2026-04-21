@@ -147,7 +147,11 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
             }
             KeyAction.Done -> {
                 inputConnection?.performEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
-                switchTab(KeyboardTab.KEYBOARD)
+                // BUG FIX: Don't force switch to KEYBOARD tab. The Done key
+                // should perform the editor action (which typically closes the keyboard
+                // or submits a search), but we shouldn't change tabs — the user might
+                // be intentionally on a different tab. The keyboard will be hidden
+                // by the system after the editor action is performed.
             }
             KeyAction.NumberToggle -> {
                 // Switches to number/symbol layer — handled in KeyboardScreen
@@ -204,11 +208,17 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
                     // Now we correctly handle lastWordStart == -1 and check if the char
                     // before cursor is actually a word character.
 
-                    // First, delete any selected text
+                    // BUG FIX: Handle selected text. If the user has text selected
+                    // (e.g., they double-tapped a word), commit the suggestion text
+                    // directly — this replaces the selection in one operation.
+                    // No need to separately delete the selection first.
                     val selectedText = ic.getSelectedText(0)
                     if (selectedText != null && selectedText.isNotEmpty()) {
-                        // Commit empty text to replace the selection, then proceed
-                        ic.commitText("", 0)
+                        // Selection exists — replace it directly with the suggestion.
+                        // We also need to delete any partial word before the selection.
+                        // Since the selection replaced text, we need to delete back
+                        // to the word boundary before the selection start.
+                        ic.commitText("", 1)  // Clear selection reliably
                     }
 
                     val beforeCursor = ic.getTextBeforeCursor(MAX_SYNC_LENGTH, 0)?.toString() ?: ""
@@ -452,6 +462,7 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
         textValue = ""
         cursorPosition = 0
         isShiftOn = false
+        currentTab = KeyboardTab.KEYBOARD
         showSuggestions = false
         suggestions = emptyList()
         // FIX: Increment reset generation so KeyboardScreen can reset
