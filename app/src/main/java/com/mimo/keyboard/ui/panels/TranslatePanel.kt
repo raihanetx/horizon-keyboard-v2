@@ -240,7 +240,7 @@ private val enToEsDictionary = mapOf(
     "work" to "trabajar", "worked" to "trabajó", "working" to "trabajando",
     "call" to "llamar", "called" to "llamó", "calling" to "llamando",
     "try" to "intentar", "tried" to "intentó", "trying" to "intentando",
-    "ask" to "preguntar", "keep" to "mantener", "let" to "dejar",
+    "keep" to "mantener", "let" to "dejar",
     "begin" to "comenzar", "show" to "mostrar", "hear" to "oír",
     "play" to "jugar", "run" to "correr", "move" to "mover",
     "live" to "vivir", "believe" to "creer", "hold" to "sostener",
@@ -290,7 +290,9 @@ private val enToEsDictionary = mapOf(
     "number" to "número", "group" to "grupo", "party" to "fiesta",
     "family" to "familia", "friend" to "amigo", "school" to "escuela",
     "student" to "estudiante", "teacher" to "profesor", "doctor" to "doctor",
-    "work" to "trabajo", "job" to "trabajo", "money" to "dinero",
+    // FIX: Removed duplicate "work" → "trabajo" (nouns section) which overwrote
+    // "work" → "trabajar" (verb). The verb form is more useful for translation.
+    "job" to "trabajo", "money" to "dinero",
     "price" to "precio", "market" to "mercado", "business" to "negocio",
     "game" to "juego", "music" to "música", "movie" to "película",
     "phone" to "teléfono", "computer" to "computadora", "internet" to "internet",

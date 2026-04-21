@@ -55,6 +55,14 @@ fun KeyboardScreen(
     // Track which number/symbol layer is active (local UI state, not in ViewModel)
     var isNumberLayer by remember { mutableStateOf(false) }
 
+    // FIX: Reset isNumberLayer when the ViewModel resets (field switch).
+    // Previously, switching input fields would reset shift state (in ViewModel)
+    // but NOT reset isNumberLayer (local Compose state), leaving the user
+    // stuck on the number layer in the new input field.
+    LaunchedEffect(viewModel.resetGeneration) {
+        isNumberLayer = false
+    }
+
     // FIX: Read settings as Compose state so changes in SettingsPanel
     // take effect immediately. Previously, toggling settings had no visible effect
     // because nothing re-read them after the toggle.

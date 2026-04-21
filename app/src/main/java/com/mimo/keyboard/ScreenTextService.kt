@@ -67,6 +67,9 @@ class ScreenTextService : AccessibilityService() {
      *
      * FIX: Throttled to run at most once per SCAN_THROTTLE_MS to prevent
      * excessive scanning during rapid accessibility events (scrolling, animations).
+     * FIX: Recycles the root AccessibilityNodeInfo after use to prevent memory leaks.
+     * Android requires recycling these objects when done, or they leak native memory
+     * in a long-running service.
      */
     private fun scanScreenForLinks() {
         val now = System.currentTimeMillis()
@@ -91,6 +94,12 @@ class ScreenTextService : AccessibilityService() {
         } catch (e: Exception) {
             // Node traversal can throw SecurityException or other exceptions
             // on some devices — ignore silently
+        } finally {
+            // FIX: Recycle the root node to prevent native memory leaks.
+            // AccessibilityNodeInfo objects hold references to native memory
+            // that must be explicitly released. In a continuously-running
+            // AccessibilityService, failing to recycle causes steady memory growth.
+            root.recycle()
         }
     }
 

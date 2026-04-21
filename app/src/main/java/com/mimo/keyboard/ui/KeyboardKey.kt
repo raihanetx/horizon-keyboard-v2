@@ -18,6 +18,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.mimo.keyboard.KeyAction
 import com.mimo.keyboard.ui.theme.HorizonColors
 import kotlinx.coroutines.delay
@@ -131,7 +133,11 @@ fun KeyboardKey(
         else -> FontWeight.Medium
     }
 
-    // FIX: Wrapper Box for popup positioning
+    // FIX: Wrapper Box for popup positioning.
+    // Note: Compose children are NOT clipped by their parent by default,
+    // so the AlternativesPopup can overflow above the key. However, the
+    // KeyboardRow's Row and the parent Column in QwertyKeyboard may clip.
+    // The popup is positioned with offset(y = -8.dp) to appear above the key.
     Box(modifier = modifier) {
         // Main key
         Box(
@@ -180,27 +186,45 @@ fun KeyboardKey(
             )
         }
 
-        // FIX: Long-press alternatives popup
+        // FIX: Long-press alternatives popup — uses Popup composable to render
+        // ABOVE the keyboard layout, preventing clipping by parent containers.
+        // Previously, the popup was an inline Box that could be clipped by the
+        // parent Row/Column for top-row keys where vertical space is limited.
         if (showAlternatives && keyDef.alternatives != null) {
-            AlternativesPopup(
-                alternatives = keyDef.alternatives,
-                onAlternativeSelected = { action ->
-                    onPress(action)
+            Popup(
+                properties = PopupProperties(
+                    focusable = true,
+                    dismissOnBackPress = true,
+                    dismissOnClickOutside = true
+                ),
+                onDismissRequest = {
                     showAlternatives = false
                     isLongPressTriggered = false
                 },
-                onDismiss = {
-                    showAlternatives = false
-                    isLongPressTriggered = false
-                }
-            )
+                alignment = Alignment.TopCenter,
+                offset = androidx.compose.ui.unit.IntOffset(0, -8)
+            ) {
+                AlternativesPopup(
+                    alternatives = keyDef.alternatives,
+                    onAlternativeSelected = { action ->
+                        onPress(action)
+                        showAlternatives = false
+                        isLongPressTriggered = false
+                    },
+                    onDismiss = {
+                        showAlternatives = false
+                        isLongPressTriggered = false
+                    }
+                )
+            }
         }
     }
 }
 
 /**
  * Popup showing alternative key options on long-press.
- * Appears above the pressed key with accent styling.
+ * Rendered inside a Popup composable so it appears above the keyboard layout
+ * without being clipped by parent containers.
  */
 @Composable
 private fun AlternativesPopup(
@@ -210,8 +234,7 @@ private fun AlternativesPopup(
 ) {
     Column(
         modifier = Modifier
-            .offset(y = (-8).dp)
-            .fillMaxWidth()
+            .width(IntrinsicSize.Max)
             .shadow(
                 elevation = 4.dp,
                 shape = RoundedCornerShape(8.dp),

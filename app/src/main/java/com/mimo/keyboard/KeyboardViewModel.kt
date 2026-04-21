@@ -45,6 +45,12 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
     var currentTab by mutableStateOf(KeyboardTab.KEYBOARD)
         private set
 
+    // FIX: Reset generation counter — incremented every time reset() is called.
+    // KeyboardScreen observes this to reset its local Compose state (like isNumberLayer)
+    // that can't be reset from the ViewModel directly.
+    var resetGeneration by mutableStateOf(0)
+        private set
+
     // FIX: Expose settings so UI can check haptics/suggestions/etc.
     // Previously, KeyboardSettings was only used by SettingsPanel — toggling
     // haptics or suggestions had zero effect on keyboard behavior.
@@ -117,19 +123,28 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
             KeyAction.Space -> {
                 val ic = inputConnection
                 if (ic != null) {
-                    ic.commitText(" ", 1)
-                    // FIX: Sync from InputConnection instead of local accumulation
-                    syncFromInputConnection(ic)
-                }
-                // FIX: Auto-capitalize after sentence-ending punctuation
-                // When auto-capitalize is ON, pressing space after . ! ? turns shift on
-                if (settings?.isAutoCapitalize != false) {
-                    val trimmed = textValue.trimEnd()
-                    val lastChar = trimmed.lastOrNull()
-                    if (lastChar == '.' || lastChar == '!' || lastChar == '?') {
-                        isShiftOn = true
+                    // FIX: Prevent double-space when auto-space is ON.
+                    // If auto-space already inserted a space after punctuation, and the
+                    // user presses Space manually, we should NOT add another space.
+                    // We detect this by checking if the text before cursor already ends
+                    // with " <punct>" pattern (punctuation followed by exactly one space).
+                    val beforeText = textValue.trimEnd()
+                    val lastChar = beforeText.lastOrNull()
+                    val autoSpacePuncts = setOf('.', ',', '!', '?', ';', ':')
+                    val wasAutoSpaced = lastChar in autoSpacePuncts &&
+                        textValue.endsWith(" ") &&
+                        settings?.isAutoSpace != false
+
+                    if (!wasAutoSpaced) {
+                        ic.commitText(" ", 1)
+                        syncFromInputConnection(ic)
                     }
                 }
+                // FIX: Auto-capitalize after sentence-ending punctuation.
+                // This now works BOTH when the user manually presses Space
+                // AND when auto-space inserts the space, because
+                // handlePostCharLogic() is called after auto-space too.
+                handleAutoCapitalize()
             }
             KeyAction.Done -> {
                 inputConnection?.performEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
@@ -151,17 +166,13 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
                     isShiftOn = false
                 }
 
-                // FIX: Auto-space after punctuation when auto-space is ON.
-                // After typing . , ! ? ; : and the setting is enabled,
-                // automatically insert a space so user doesn't have to press space.
-                if (settings?.isAutoSpace != false) {
-                    val autoSpaceAfter = setOf(".", ",", "!", "?", ";", ":")
-                    if (key.char in autoSpaceAfter) {
-                        val ic2 = inputConnection
-                        ic2?.commitText(" ", 1)
-                        if (ic2 != null) syncFromInputConnection(ic2)
-                    }
-                }
+                // FIX: Unified auto-space + auto-capitalize logic.
+                // Previously, auto-space was in the Character handler but
+                // auto-capitalize was only in the Space handler. This meant:
+                // 1. Double space when user presses Space after auto-spaced punctuation
+                // 2. Auto-capitalize never fired after auto-space
+                // Now both are handled in one place via handlePostCharLogic().
+                handlePostCharLogic(key.char)
             }
             is KeyAction.SuggestionInsert -> {
                 val ic = inputConnection
@@ -218,6 +229,57 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
 
         // FIX: Update cursor position for smarter suggestions
         cursorPosition = beforeCursor.length
+    }
+
+    /**
+     * FIX: Unified post-character logic that handles BOTH auto-space and auto-capitalize.
+     *
+     * Root cause of the double-space bug: auto-space was in the Character handler,
+     * auto-capitalize was in the Space handler, and they never coordinated.
+     * When user typed "." with auto-space ON, the "." handler auto-inserted " ",
+     * then when user pressed Space, another " " was added → ".  " (double space).
+     * Also, auto-capitalize only checked in the Space handler, so it never fired
+     * after auto-space — shift was never turned on after ". " with auto-space.
+     *
+     * Now this single method handles both concerns:
+     * 1. Auto-space: inserts " " after punctuation (. , ! ? ; :) when enabled
+     * 2. Auto-capitalize: turns shift ON after sentence-ending punctuation (. ! ?)
+     *    followed by a space (whether manually typed or auto-spaced)
+     */
+    private fun handlePostCharLogic(char: String) {
+        val autoSpacePuncts = setOf(".", ",", "!", "?", ";", ":")
+        val sentenceEndPuncts = setOf(".", "!", "?")
+
+        // Auto-space after punctuation
+        if (settings?.isAutoSpace != false && char in autoSpacePuncts) {
+            val ic = inputConnection
+            ic?.commitText(" ", 1)
+            if (ic != null) syncFromInputConnection(ic)
+        }
+
+        // Auto-capitalize after sentence-ending punctuation + space
+        if (settings?.isAutoCapitalize != false && char in sentenceEndPuncts) {
+            // The auto-space above (if it fired) already added the space,
+            // so auto-capitalize fires immediately after the punctuation + space.
+            // If auto-space is OFF, the user must press Space manually, and
+            // handleAutoCapitalize() in the Space handler will catch it.
+            isShiftOn = true
+        }
+    }
+
+    /**
+     * FIX: Auto-capitalize check for when the user manually presses Space.
+     * Checks if the text before cursor ends with sentence-ending punctuation
+     * (. ! ?) followed by this space, and turns shift ON if so.
+     */
+    private fun handleAutoCapitalize() {
+        if (settings?.isAutoCapitalize != false) {
+            val trimmed = textValue.trimEnd()
+            val lastChar = trimmed.lastOrNull()
+            if (lastChar == '.' || lastChar == '!' || lastChar == '?') {
+                isShiftOn = true
+            }
+        }
     }
 
     /**
@@ -297,6 +359,9 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
         isShiftOn = false
         showSuggestions = false
         suggestions = emptyList()
+        // FIX: Increment reset generation so KeyboardScreen can reset
+        // its local state (isNumberLayer) that lives outside the ViewModel.
+        resetGeneration++
     }
 
     companion object {
