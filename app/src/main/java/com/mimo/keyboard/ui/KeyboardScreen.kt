@@ -93,11 +93,18 @@ fun KeyboardScreen(
                 val newSuggestions = it.isShowSuggestions
                 val newDelay = it.longPressDelayMs.toLong()
                 val newHeight = it.keyHeightMultiplier
-                if (newHaptics != isHapticsEnabled) isHapticsEnabled = newHaptics
-                if (newSound != isSoundEnabled) isSoundEnabled = newSound
-                if (newSuggestions != isShowSuggestions) isShowSuggestions = newSuggestions
-                if (newDelay != longPressDelayMs) longPressDelayMs = newDelay
-                if (newHeight != keyHeightMultiplier) keyHeightMultiplier = newHeight
+                var settingsChanged = false
+                if (newHaptics != isHapticsEnabled) { isHapticsEnabled = newHaptics; settingsChanged = true }
+                if (newSound != isSoundEnabled) { isSoundEnabled = newSound; settingsChanged = true }
+                if (newSuggestions != isShowSuggestions) { isShowSuggestions = newSuggestions; settingsChanged = true }
+                if (newDelay != longPressDelayMs) { longPressDelayMs = newDelay; settingsChanged = true }
+                if (newHeight != keyHeightMultiplier) { keyHeightMultiplier = newHeight; settingsChanged = true }
+                // BUG FIX: Refresh suggestions immediately when settings change,
+                // especially when isShowSuggestions toggles — previously the suggestion
+                // bar stayed visible after disabling until the next key press.
+                if (settingsChanged) {
+                    viewModel.refreshSuggestions()
+                }
             }
             kotlinx.coroutines.delay(500)
         }

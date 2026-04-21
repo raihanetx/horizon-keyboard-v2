@@ -153,7 +153,20 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
                 // Switches to number/symbol layer — handled in KeyboardScreen
             }
             is KeyAction.Character -> {
-                val char = if (isShiftOn) key.char.uppercase() else key.char.lowercase()
+                // BUG FIX: For accent characters (é, ß, ñ, etc.), applying
+                // uppercase() can expand to multiple characters — e.g., "ß".uppercase()
+                // returns "SS", "ﬁ".uppercase() returns "FI". This corrupts input.
+                // Fix: If uppercase/lowercase changes the string length, commit
+                // the original character unchanged — accent/special chars should
+                // preserve their identity. Only apply case conversion when the
+                // resulting string has the same length as the original.
+                val char = if (isShiftOn) {
+                    val upper = key.char.uppercase()
+                    if (upper.length == key.char.length) upper else key.char
+                } else {
+                    val lower = key.char.lowercase()
+                    if (lower.length == key.char.length) lower else key.char
+                }
                 val ic = inputConnection
                 if (ic != null) {
                     ic.commitText(char, 1)
@@ -179,17 +192,25 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
                     // FIX: Delete the current partial word before inserting suggestion.
                     // Previously, typing "hel" and tapping "Hello" would produce
                     // "helHello " instead of "Hello ".
-                    // We read text before cursor, find the last word boundary,
-                    // and delete back to it.
+                    //
+                    // BUG FIX: Also handle selected text. If the user has text selected
+                    // (e.g., they double-tapped a word), we should delete the selection
+                    // before inserting the suggestion. getSelectedText() returns the
+                    // selected text, and we need to delete it along with any partial word.
                     //
                     // BUG FIX: When cursor is at position 0, lastIndexOfAny returns -1.
                     // The old formula `beforeCursor.length - (-1) - 1 = beforeCursor.length`
                     // would delete ALL text before the cursor, not just the current word.
-                    // Now we correctly handle lastWordStart == -1: it means there's no
-                    // whitespace before the cursor, so the "partial word" spans the entire
-                    // text before cursor (which IS the correct thing to delete in that case).
-                    // But we must also check that the char before cursor is actually a word
-                    // character — if it's whitespace or punctuation, there's nothing to delete.
+                    // Now we correctly handle lastWordStart == -1 and check if the char
+                    // before cursor is actually a word character.
+
+                    // First, delete any selected text
+                    val selectedText = ic.getSelectedText(0)
+                    if (selectedText != null && selectedText.isNotEmpty()) {
+                        // Commit empty text to replace the selection, then proceed
+                        ic.commitText("", 0)
+                    }
+
                     val beforeCursor = ic.getTextBeforeCursor(MAX_SYNC_LENGTH, 0)?.toString() ?: ""
                     val charsToDelete = if (beforeCursor.isEmpty()) {
                         0
@@ -269,20 +290,52 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
         val autoSpacePuncts = setOf(".", ",", "!", "?", ";", ":")
         val sentenceEndPuncts = setOf(".", "!", "?")
 
-        // Auto-space after punctuation
+        // BUG FIX: Auto-space now checks context to avoid inserting spaces
+        // inside numbers (3.14, 1,000) and abbreviations (Dr., U.S., example.com).
+        // Previous code inserted a space after EVERY period/comma, which broke
+        // numeric input and URL/email typing.
+        //
+        // Logic: Don't auto-space if the character BEFORE the punctuation is
+        // a letter or digit — that indicates we're mid-word or mid-number.
+        // For example:
+        //   "3." → digit before '.' → no auto-space (it's a decimal)
+        //   "a." → letter before '.' → no auto-space (abbreviation)
+        //   " ." → space before '.' → auto-space OK (sentence end)
+        //   start-of-field + "." → auto-space OK (sentence end)
         if (settings?.isAutoSpace != false && char in autoSpacePuncts) {
-            val ic = inputConnection
-            ic?.commitText(" ", 1)
-            if (ic != null) syncFromInputConnection(ic)
+            val charBeforePunct = textValue.trimEnd().let { trimmed ->
+                if (trimmed.length >= 2) {
+                    // The char at trimmed.length - 2 is the one BEFORE the punctuation
+                    // (trimmed.length - 1 is the punctuation itself)
+                    trimmed[trimmed.length - 2]
+                } else {
+                    // Punctuation is at start or after a single char
+                    ' '  // Treat as sentence context
+                }
+            }
+            // Only auto-space if the char before punctuation is NOT a letter/digit
+            if (!charBeforePunct.isLetterOrDigit()) {
+                val ic = inputConnection
+                ic?.commitText(" ", 1)
+                if (ic != null) syncFromInputConnection(ic)
+            }
         }
 
-        // Auto-capitalize after sentence-ending punctuation + space
+        // BUG FIX: Auto-capitalize only after sentence-ending punctuation that
+        // is NOT preceded by a letter or digit. Previously, typing "3.14" or
+        // "Dr." would trigger auto-capitalize, turning shift on unexpectedly.
+        // Same context check as auto-space above.
         if (settings?.isAutoCapitalize != false && char in sentenceEndPuncts) {
-            // The auto-space above (if it fired) already added the space,
-            // so auto-capitalize fires immediately after the punctuation + space.
-            // If auto-space is OFF, the user must press Space manually, and
-            // handleAutoCapitalize() in the Space handler will catch it.
-            isShiftOn = true
+            val charBeforePunct = textValue.trimEnd().let { trimmed ->
+                if (trimmed.length >= 2) {
+                    trimmed[trimmed.length - 2]
+                } else {
+                    ' '  // Start of field — always capitalize after sentence end
+                }
+            }
+            if (!charBeforePunct.isLetterOrDigit()) {
+                isShiftOn = true
+            }
         }
     }
 
@@ -290,13 +343,25 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
      * FIX: Auto-capitalize check for when the user manually presses Space.
      * Checks if the text before cursor ends with sentence-ending punctuation
      * (. ! ?) followed by this space, and turns shift ON if so.
+     *
+     * BUG FIX: Also checks that the punctuation is NOT preceded by a letter or
+     * digit (same context check as handlePostCharLogic). Without this, typing
+     * "3. " or "Dr. " would incorrectly activate shift.
      */
     private fun handleAutoCapitalize() {
         if (settings?.isAutoCapitalize != false) {
             val trimmed = textValue.trimEnd()
             val lastChar = trimmed.lastOrNull()
             if (lastChar == '.' || lastChar == '!' || lastChar == '?') {
-                isShiftOn = true
+                // Check context: punctuation should NOT be preceded by letter/digit
+                val charBeforePunct = if (trimmed.length >= 2) {
+                    trimmed[trimmed.length - 2]
+                } else {
+                    ' '  // Start of field — always capitalize
+                }
+                if (!charBeforePunct.isLetterOrDigit()) {
+                    isShiftOn = true
+                }
             }
         }
     }
@@ -306,6 +371,17 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
      */
     fun switchTab(tab: KeyboardTab) {
         currentTab = tab
+        updateSuggestions()
+    }
+
+    /**
+     * BUG FIX: Forces suggestion update when settings change.
+     * Previously, toggling "Show Suggestions" OFF in SettingsPanel didn't hide
+     * the suggestion bar until the next key press. Now the KeyboardScreen
+     * settings polling loop calls this when it detects a settings change,
+     * so the suggestion bar hides/shows immediately.
+     */
+    fun refreshSuggestions() {
         updateSuggestions()
     }
 

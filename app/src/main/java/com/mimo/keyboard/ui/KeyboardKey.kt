@@ -296,7 +296,7 @@ private fun AlternativesPopup(
             .padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        alternatives.forEach { (label, action) ->
+        alternatives.forEachIndexed { index, (label, action) ->
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -317,7 +317,12 @@ private fun AlternativesPopup(
                     fontWeight = FontWeight.Medium
                 )
             }
-            if (label != alternatives.last().first) {
+            // BUG FIX: Use index comparison instead of label string comparison.
+            // Previous code: `if (label != alternatives.last().first)` — this breaks
+            // when two alternatives have the same label string (e.g., two words that
+            // map to different actions but share a display label). Now correctly uses
+            // index-based comparison which is always accurate.
+            if (index < alternatives.lastIndex) {
                 Spacer(modifier = Modifier.height(2.dp))
             }
         }
