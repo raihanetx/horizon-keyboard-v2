@@ -15,7 +15,6 @@ enum class KeyboardTab {
     TRANSLATE,
     CLIPBOARD,
     VOICE,
-    TERMINAL,
     SETTINGS
 }
 

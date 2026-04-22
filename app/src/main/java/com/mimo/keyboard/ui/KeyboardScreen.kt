@@ -19,7 +19,6 @@ import com.mimo.keyboard.KeyboardTab
 import com.mimo.keyboard.KeyboardViewModel
 import com.mimo.keyboard.ui.panels.ClipboardPanel
 import com.mimo.keyboard.ui.panels.SettingsPanel
-import com.mimo.keyboard.ui.panels.TerminalPanel
 import com.mimo.keyboard.ui.panels.TranslatePanel
 import com.mimo.keyboard.ui.theme.HorizonColors
 
@@ -146,9 +145,6 @@ fun KeyboardScreen(
                 }
                 KeyboardTab.CLIPBOARD -> {
                     ClipboardPanel(viewModel = viewModel)
-                }
-                KeyboardTab.TERMINAL -> {
-                    TerminalPanel()
                 }
                 KeyboardTab.SETTINGS -> {
                     SettingsPanel(settings = settings)
