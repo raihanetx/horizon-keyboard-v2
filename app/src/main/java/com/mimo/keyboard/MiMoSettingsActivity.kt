@@ -5,6 +5,8 @@ import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
+import android.widget.ScrollView
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -34,14 +36,103 @@ import com.mimo.keyboard.ui.theme.HorizonKeyboardTheme
  *
  * 1. Enable Horizon Keyboard in Input Method settings
  * 2. Select Horizon Keyboard as the active input method
+ *
+ * CRASH SAFETY: A global uncaught exception handler is installed
+ * that shows any crash error directly on screen so users can
+ * read and copy the error message.
  */
 class MiMoSettingsActivity : ComponentActivity() {
+
+    companion object {
+        // Global error message that persists across activity recreation
+        var lastCrashError: String? = null
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            HorizonKeyboardTheme {
-                SettingsScreen()
+
+        // Install crash handler that shows errors on screen
+        installCrashHandler()
+
+        // Check if there was a previous crash
+        val crashError = lastCrashError
+        if (crashError != null) {
+            lastCrashError = null
+            showErrorScreen(crashError)
+            return
+        }
+
+        try {
+            setContent {
+                HorizonKeyboardTheme {
+                    SettingsScreen()
+                }
             }
+        } catch (e: Exception) {
+            // If Compose fails entirely, show error in a plain Android view
+            showErrorScreen(formatException(e))
+        }
+    }
+
+    /**
+     * Shows the error in a plain Android TextView (no Compose dependency)
+     * so the user can read and copy the error message.
+     */
+    private fun showErrorScreen(errorText: String) {
+        try {
+            val scrollView = ScrollView(this)
+            val textView = TextView(this).apply {
+                text = "ERROR (you can select & copy):\n\n$errorText"
+                setTextColor(0xFFFF453A.toInt()) // Red
+                setTextSize(14f)
+                setPadding(48, 48, 48, 48)
+                setTextIsSelectable(true) // Allow copy
+            }
+            scrollView.addView(textView)
+            setContentView(scrollView)
+        } catch (e2: Exception) {
+            // Absolute fallback - should never happen
+            setContentView(TextView(this).apply {
+                text = "Fatal: ${e2.message}"
+                setTextIsSelectable(true)
+            })
+        }
+    }
+
+    private fun formatException(e: Throwable): String {
+        val sb = StringBuilder()
+        sb.append(e.javaClass.simpleName)
+        sb.append(": ")
+        sb.append(e.message)
+        sb.append("\n\n")
+        for (element in e.stackTrace.take(15)) {
+            sb.append("  at ")
+            sb.append(element.toString())
+            sb.append("\n")
+        }
+        val cause = e.cause
+        if (cause != null) {
+            sb.append("\nCaused by: ")
+            sb.append(cause.javaClass.simpleName)
+            sb.append(": ")
+            sb.append(cause.message)
+            sb.append("\n")
+            for (element in cause.stackTrace.take(10)) {
+                sb.append("  at ")
+                sb.append(element.toString())
+                sb.append("\n")
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun installCrashHandler() {
+        val currentHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            // Save the error so we can show it on next launch
+            lastCrashError = formatException(throwable)
+            // Let the default handler do its thing (write to logcat etc.)
+            currentHandler?.uncaughtException(thread, throwable)
         }
     }
 }
@@ -50,31 +141,32 @@ class MiMoSettingsActivity : ComponentActivity() {
 private fun SettingsScreen() {
     val context = LocalContext.current
 
-    // Re-check status every time the composition activates
-    var isKeyboardEnabled by remember { mutableStateOf(isKeyboardEnabled(context)) }
-    var isKeyboardSelected by remember { mutableStateOf(isKeyboardSelected(context)) }
+    // Track keyboard status
+    var isKeyboardEnabled by remember { mutableStateOf(false) }
+    var isKeyboardSelected by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Re-check when activity resumes (user returns from system settings)
-    // Using DisposableEffect with lifecycle events for compatibility
-    val lifecycleOwner = remember {
-        object : androidx.lifecycle.LifecycleOwner {
-            override val lifecycle = androidx.lifecycle.LifecycleRegistry(this)
+    // Check keyboard status safely
+    fun checkStatus() {
+        try {
+            isKeyboardEnabled = isKeyboardEnabled(context)
+            isKeyboardSelected = isKeyboardSelected(context)
+            errorMessage = null
+        } catch (e: Exception) {
+            errorMessage = "Status check error: ${e.message}"
         }
     }
 
-    DisposableEffect(lifecycleOwner) {
-        // Re-check immediately when this effect enters composition
-        isKeyboardEnabled = isKeyboardEnabled(context)
-        isKeyboardSelected = isKeyboardSelected(context)
-        onDispose { }
+    // Check on first composition
+    LaunchedEffect(Unit) {
+        checkStatus()
     }
 
-    // Also re-check periodically while the screen is visible
+    // Re-check periodically while screen is visible
     LaunchedEffect(Unit) {
         while (true) {
-            isKeyboardEnabled = isKeyboardEnabled(context)
-            isKeyboardSelected = isKeyboardSelected(context)
-            kotlinx.coroutines.delay(1000)
+            kotlinx.coroutines.delay(1500)
+            checkStatus()
         }
     }
 
@@ -109,6 +201,18 @@ private fun SettingsScreen() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Show error if any
+        if (errorMessage != null) {
+            Text(
+                text = errorMessage!!,
+                fontSize = 12.sp,
+                color = HorizonColors.Error,
+                fontFamily = FontFamily.Monospace,
+                lineHeight = 16.sp
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
         // Overall status indicator
         val statusText = when {
             isKeyboardEnabled && isKeyboardSelected ->
@@ -142,9 +246,13 @@ private fun SettingsScreen() {
             description = "Open Input Method settings and enable Horizon Keyboard",
             isComplete = isKeyboardEnabled,
             onClick = {
-                val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(intent)
+                try {
+                    val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    errorMessage = "Cannot open settings: ${e.message}"
+                }
             }
         )
 
@@ -161,9 +269,13 @@ private fun SettingsScreen() {
                     val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
                     imm.showInputMethodPicker()
                 } catch (e: Exception) {
-                    val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(intent)
+                    try {
+                        val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    } catch (e2: Exception) {
+                        errorMessage = "Cannot open picker: ${e2.message}"
+                    }
                 }
             }
         )
@@ -171,7 +283,7 @@ private fun SettingsScreen() {
         Spacer(modifier = Modifier.height(40.dp))
 
         Text(
-            text = "v1.4.0",
+            text = "v1.5.0",
             fontSize = 12.sp,
             color = HorizonColors.TextExtraMuted,
             fontFamily = FontFamily.Monospace
@@ -183,10 +295,11 @@ private fun SettingsScreen() {
  * Checks if the Horizon Keyboard IME is enabled in system settings.
  */
 private fun isKeyboardEnabled(context: Context): Boolean {
-    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-    val enabledInputMethods = imm.enabledInputMethodList
-    return enabledInputMethods.any {
-        it.packageName == context.packageName
+    return try {
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.enabledInputMethodList.any { it.packageName == context.packageName }
+    } catch (e: Exception) {
+        false
     }
 }
 
@@ -194,14 +307,17 @@ private fun isKeyboardEnabled(context: Context): Boolean {
  * Checks if the Horizon Keyboard IME is currently selected as the active input method.
  */
 private fun isKeyboardSelected(context: Context): Boolean {
-    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-    val enabledInputMethods = imm.enabledInputMethodList
-    val selectedId = Settings.Secure.getString(
-        context.contentResolver,
-        Settings.Secure.DEFAULT_INPUT_METHOD
-    )
-    return enabledInputMethods.any {
-        it.packageName == context.packageName && it.id == selectedId
+    return try {
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        val selectedId = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.DEFAULT_INPUT_METHOD
+        )
+        imm.enabledInputMethodList.any {
+            it.packageName == context.packageName && it.id == selectedId
+        }
+    } catch (e: Exception) {
+        false
     }
 }
 
