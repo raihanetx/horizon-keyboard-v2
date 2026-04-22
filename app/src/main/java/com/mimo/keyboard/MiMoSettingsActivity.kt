@@ -25,9 +25,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.mimo.keyboard.ui.theme.HorizonColors
 import com.mimo.keyboard.ui.theme.HorizonKeyboardTheme
 
@@ -60,29 +58,20 @@ class MiMoSettingsActivity : ComponentActivity() {
 private fun SettingsScreen() {
     val context = LocalContext.current
 
-    // FIX: Use LocalLifecycleOwner from lifecycle-compose (the correct
-    // import for Lifecycle 2.7+). The old androidx.compose.ui.platform
-    // version was deprecated and removed.
-    val lifecycleOwner = LocalLifecycleOwner.current
-
     // Re-check status every time the activity resumes
     var isKeyboardEnabled by remember { mutableStateOf(isKeyboardEnabled(context)) }
     var isKeyboardSelected by remember { mutableStateOf(isKeyboardSelected(context)) }
     var isAccessibilityEnabled by remember { mutableStateOf(isAccessibilityEnabled(context)) }
 
-    // Observe lifecycle to re-check status when user returns from system settings
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                isKeyboardEnabled = isKeyboardEnabled(context)
-                isKeyboardSelected = isKeyboardSelected(context)
-                isAccessibilityEnabled = isAccessibilityEnabled(context)
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
+    // FIX: Use LifecycleResumeEffect instead of deprecated LocalLifecycleOwner.
+    // LocalLifecycleOwner was removed in lifecycle-compose 2.7+.
+    // LifecycleResumeEffect is the recommended replacement for
+    // running code every time the activity resumes.
+    LifecycleResumeEffect(Unit) {
+        isKeyboardEnabled = isKeyboardEnabled(context)
+        isKeyboardSelected = isKeyboardSelected(context)
+        isAccessibilityEnabled = isAccessibilityEnabled(context)
+        onPauseOrDispose { }
     }
 
     Column(
