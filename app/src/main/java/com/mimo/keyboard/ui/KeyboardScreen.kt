@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.mimo.keyboard.KeyAction
@@ -86,7 +87,7 @@ fun KeyboardScreen(
     // - Polling stops when the user switches to Translate/Clipboard/etc.
     // - No wasted CPU when keyboard is hidden
     LaunchedEffect(viewModel.currentTab) {
-        while (kotlinx.coroutines.isActive) {
+        while (isActive) {
             settings?.let {
                 val newHaptics = it.isHapticsEnabled
                 val newSound = it.isSoundEnabled

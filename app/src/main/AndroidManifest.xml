@@ -10,8 +10,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:label="Horizon Keyboard"
         android:supportsRtl="true"
-        android:theme="@style/Theme.HorizonKeyboard"
-        android:extractNativeLibs="true">
+        android:theme="@style/Theme.HorizonKeyboard">
 
         <!-- Input Method Service - the core keyboard service -->
         <service

@@ -32,9 +32,8 @@ object ScreenLinkStore {
      * FIX: Returns a snapshot copy for safe Compose consumption.
      * The returned list is immutable and safe to iterate on any thread.
      */
-    var links: List<String>
+    val links: List<String>
         get() = synchronized(_links) { _links.toList() }
-        private set
 
     /**
      * Whether the Accessibility Service is currently active.
