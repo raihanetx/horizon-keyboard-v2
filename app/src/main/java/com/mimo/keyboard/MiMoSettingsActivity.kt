@@ -283,7 +283,7 @@ private fun SettingsScreen() {
         Spacer(modifier = Modifier.height(40.dp))
 
         Text(
-            text = "v1.5.0",
+            text = "v1.6.0",
             fontSize = 12.sp,
             color = HorizonColors.TextExtraMuted,
             fontFamily = FontFamily.Monospace
