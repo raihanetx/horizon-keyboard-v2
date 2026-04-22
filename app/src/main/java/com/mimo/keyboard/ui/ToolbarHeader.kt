@@ -25,9 +25,9 @@ import com.mimo.keyboard.ui.theme.HorizonColors
 
 /**
  * Toolbar header at the top of the keyboard area.
- * Maps to the .tb CSS element with 6 tab buttons.
+ * Maps to the .tb CSS element with 5 tab buttons.
  *
- * Contains: Keyboard | Translate | Clipboard | Voice | Terminal | Settings
+ * Contains: Keyboard | Translate | Clipboard | Voice | Settings
  */
 @Composable
 fun ToolbarHeader(
@@ -97,14 +97,6 @@ fun ToolbarHeader(
                         isSelected = currentTab == KeyboardTab.VOICE,
                         contentDescription = "Voice",
                         onClick = { onTabSelected(KeyboardTab.VOICE) }
-                    )
-                }
-                Box(modifier = Modifier.weight(1f)) {
-                    ToolbarButton(
-                        iconRes = R.drawable.ic_terminal,
-                        isSelected = currentTab == KeyboardTab.TERMINAL,
-                        contentDescription = "Terminal",
-                        onClick = { onTabSelected(KeyboardTab.TERMINAL) }
                     )
                 }
                 Box(modifier = Modifier.weight(1f)) {

@@ -30,9 +30,6 @@ import com.mimo.keyboard.ui.theme.HorizonKeyboardTheme
  * management. The view must have ViewTreeLifecycleOwner, ViewTreeViewModelStoreOwner,
  * and ViewTreeSavedStateRegistryOwner set BEFORE setContent is called.
  *
- * The TerminalPanel uses a non-focusable text display instead of BasicTextField
- * to prevent recursive IME crashes.
- *
  * FIX LOG:
  * - Fixed: reset() now called on ALL field switches, not just restarting=true
  * - Fixed: inputConnection cleared in onFinishInput to prevent stale connection usage

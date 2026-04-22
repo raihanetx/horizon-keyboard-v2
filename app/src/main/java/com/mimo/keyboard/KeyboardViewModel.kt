@@ -15,7 +15,6 @@ enum class KeyboardTab {
     TRANSLATE,
     CLIPBOARD,
     VOICE,
-    TERMINAL,
     SETTINGS
 }
 
@@ -27,8 +26,7 @@ enum class KeyboardTab {
  * tracked independently. The previous approach caused textValue to
  * drift from actual field content on backspace, external edits, etc.
  *
- * The Magic Button (Terminal tab) uses ScreenLinkStore directly,
- * which is populated by the Accessibility Service (ScreenTextService).
+ * The keyboard supports QWERTY typing, translation, clipboard, and settings.
  */
 class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewModel() {
 

@@ -2,5 +2,4 @@
 <resources>
     <string name="app_name">Horizon Keyboard</string>
     <string name="keyboard_name">Horizon Keyboard</string>
-    <string name="accessibility_service_description">Horizon Keyboard uses accessibility to detect links on your screen. When a browser terminal shows a link you cannot copy or tap, this feature reads the screen, finds the URL, and shows it in the keyboard\'s Magic Button tab for one-tap copy. No personal data is collected or stored.</string>
 </resources>
