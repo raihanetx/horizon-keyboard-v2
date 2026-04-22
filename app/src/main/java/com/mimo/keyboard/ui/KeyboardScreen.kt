@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.isActive
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.mimo.keyboard.KeyAction
 import com.mimo.keyboard.KeyboardSettings
