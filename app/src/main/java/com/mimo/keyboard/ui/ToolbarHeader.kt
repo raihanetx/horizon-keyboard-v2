@@ -25,9 +25,8 @@ import com.mimo.keyboard.ui.theme.HorizonColors
 
 /**
  * Toolbar header at the top of the keyboard area.
- * Maps to the .tb CSS element with 5 tab buttons.
- *
- * Contains: Keyboard | Translate | Clipboard | Voice | Settings
+ * Maps to the .tb CSS element with 6 tab buttons (matching the HTML prototype):
+ * Keyboard | Translate | Clipboard | Voice | Terminal | Settings
  */
 @Composable
 fun ToolbarHeader(
@@ -54,7 +53,7 @@ fun ToolbarHeader(
             )
         }
 
-        // Normal toolbar buttons
+        // Normal toolbar buttons (6 tabs matching HTML)
         AnimatedVisibility(
             visible = !isVoiceActive,
             enter = fadeIn(),
@@ -67,6 +66,7 @@ fun ToolbarHeader(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 1. Keyboard
                 Box(modifier = Modifier.weight(1f)) {
                     ToolbarButton(
                         iconRes = R.drawable.ic_keyboard,
@@ -75,6 +75,7 @@ fun ToolbarHeader(
                         onClick = { onTabSelected(KeyboardTab.KEYBOARD) }
                     )
                 }
+                // 2. Translate
                 Box(modifier = Modifier.weight(1f)) {
                     ToolbarButton(
                         iconRes = R.drawable.ic_translate,
@@ -83,6 +84,7 @@ fun ToolbarHeader(
                         onClick = { onTabSelected(KeyboardTab.TRANSLATE) }
                     )
                 }
+                // 3. Clipboard
                 Box(modifier = Modifier.weight(1f)) {
                     ToolbarButton(
                         iconRes = R.drawable.ic_clipboard,
@@ -91,6 +93,7 @@ fun ToolbarHeader(
                         onClick = { onTabSelected(KeyboardTab.CLIPBOARD) }
                     )
                 }
+                // 4. Voice
                 Box(modifier = Modifier.weight(1f)) {
                     ToolbarButton(
                         iconRes = R.drawable.ic_mic,
@@ -99,6 +102,16 @@ fun ToolbarHeader(
                         onClick = { onTabSelected(KeyboardTab.VOICE) }
                     )
                 }
+                // 5. Terminal
+                Box(modifier = Modifier.weight(1f)) {
+                    ToolbarButton(
+                        iconRes = R.drawable.ic_terminal,
+                        isSelected = currentTab == KeyboardTab.TERMINAL,
+                        contentDescription = "Terminal",
+                        onClick = { onTabSelected(KeyboardTab.TERMINAL) }
+                    )
+                }
+                // 6. Settings
                 Box(modifier = Modifier.weight(1f)) {
                     ToolbarButton(
                         iconRes = R.drawable.ic_settings,

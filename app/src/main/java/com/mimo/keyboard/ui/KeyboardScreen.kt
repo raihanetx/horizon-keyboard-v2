@@ -9,9 +9,8 @@ import android.os.VibratorManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
 import kotlinx.coroutines.isActive
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.mimo.keyboard.KeyAction
 import com.mimo.keyboard.KeyboardSettings
@@ -19,6 +18,7 @@ import com.mimo.keyboard.KeyboardTab
 import com.mimo.keyboard.KeyboardViewModel
 import com.mimo.keyboard.ui.panels.ClipboardPanel
 import com.mimo.keyboard.ui.panels.SettingsPanel
+import com.mimo.keyboard.ui.panels.TerminalPanel
 import com.mimo.keyboard.ui.panels.TranslatePanel
 import com.mimo.keyboard.ui.theme.HorizonColors
 
@@ -26,24 +26,16 @@ import com.mimo.keyboard.ui.theme.HorizonColors
  * Main keyboard screen composable.
  * Assembles all keyboard components into the final layout.
  *
- * Layout (bottom to top):
+ * Layout (matching HTML prototype, bottom to top):
  * ┌─────────────────────────────┐
- * │  Toolbar Header             │  <- 48dp, tab buttons
+ * │  Toolbar Header             │  48dp, 6 tab buttons (with border-top)
  * ├─────────────────────────────┤
- * │  Suggestion Bar             │  <- 40dp, appears when typing
+ * │  Suggestion Bar             │  40dp, appears when typing (animated slide)
  * ├─────────────────────────────┤
- * │  Main Area                  │  <- wrap content
- * │  +- Active Panel OR         │
- * │  +- QWERTY Keyboard         │
+ * │  Main Area                  │  220dp height area
+ * │  +- QWERTY Keyboard OR      │
+ * │  +- Active Panel            │
  * └─────────────────────────────┘
- *
- * FIX: Number layer toggle now properly resets shift state when switching
- * layers to prevent inconsistent visual state.
- * FIX: KeyboardSettings is now wired to actual keyboard behavior:
- * - isHapticsEnabled controls vibration on key press
- * - isShowSuggestions controls suggestion bar visibility
- * - isAutoCapitalize enables shift after sentence-ending punctuation
- * - isAutoSpace inserts space after punctuation automatically
  */
 @Composable
 fun KeyboardScreen(
@@ -56,35 +48,19 @@ fun KeyboardScreen(
     // Track which number/symbol layer is active (local UI state, not in ViewModel)
     var isNumberLayer by remember { mutableStateOf(false) }
 
-    // FIX: Reset isNumberLayer when the ViewModel resets (field switch).
-    // Previously, switching input fields would reset shift state (in ViewModel)
-    // but NOT reset isNumberLayer (local Compose state), leaving the user
-    // stuck on the number layer in the new input field.
+    // Reset isNumberLayer when the ViewModel resets (field switch)
     LaunchedEffect(viewModel.resetGeneration) {
         isNumberLayer = false
     }
 
-    // FIX: Read settings as Compose state so changes in SettingsPanel
-    // take effect immediately. Previously, toggling settings had no visible effect
-    // because nothing re-read them after the toggle.
+    // Read settings as Compose state
     var isHapticsEnabled by remember { mutableStateOf(settings?.isHapticsEnabled ?: true) }
     var isSoundEnabled by remember { mutableStateOf(settings?.isSoundEnabled ?: false) }
     var isShowSuggestions by remember { mutableStateOf(settings?.isShowSuggestions ?: true) }
     var longPressDelayMs by remember { mutableStateOf(settings?.longPressDelayMs?.toLong() ?: 300L) }
     var keyHeightMultiplier by remember { mutableStateOf(settings?.keyHeightMultiplier ?: 1.0f) }
 
-    // FIX: Poll settings for changes (settings are written by SettingsPanel via SharedPreferences).
-    //
-    // BUG FIX: Previously used LaunchedEffect(Unit) which ran FOREVER — even when the
-    // keyboard was hidden or a different tab was active. This wasted CPU and battery
-    // polling SharedPreferences every 500ms indefinitely.
-    //
-    // Now we use currentTab as the key, so the effect restarts when the tab changes.
-    // When the effect is cancelled (tab switches away), the while loop terminates
-    // naturally because isActive becomes false. This means:
-    // - Polling only runs when the KEYBOARD tab is active (where settings matter)
-    // - Polling stops when the user switches to Translate/Clipboard/etc.
-    // - No wasted CPU when keyboard is hidden
+    // Poll settings for changes
     LaunchedEffect(viewModel.currentTab) {
         while (isActive) {
             settings?.let {
@@ -99,9 +75,6 @@ fun KeyboardScreen(
                 if (newSuggestions != isShowSuggestions) { isShowSuggestions = newSuggestions; settingsChanged = true }
                 if (newDelay != longPressDelayMs) { longPressDelayMs = newDelay; settingsChanged = true }
                 if (newHeight != keyHeightMultiplier) { keyHeightMultiplier = newHeight; settingsChanged = true }
-                // BUG FIX: Refresh suggestions immediately when settings change,
-                // especially when isShowSuggestions toggles — previously the suggestion
-                // bar stayed visible after disabling until the next key press.
                 if (settingsChanged) {
                     viewModel.refreshSuggestions()
                 }
@@ -110,13 +83,13 @@ fun KeyboardScreen(
         }
     }
 
+    // Main container - fixed height matching HTML --ma-h: 220px
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .wrapContentHeight()
             .background(HorizonColors.Background)
     ) {
-        // -- Toolbar Header --------------------------------
+        // -- Toolbar Header (with border-top like HTML .tb) ----
         ToolbarHeader(
             currentTab = viewModel.currentTab,
             isVoiceActive = viewModel.currentTab == KeyboardTab.VOICE,
@@ -124,7 +97,6 @@ fun KeyboardScreen(
         )
 
         // -- Suggestion Bar (appears when typing) -----------
-        // FIX: Respect isShowSuggestions setting
         SuggestionBar(
             isVisible = viewModel.showSuggestions && isShowSuggestions,
             suggestions = viewModel.suggestions,
@@ -133,11 +105,11 @@ fun KeyboardScreen(
             }
         )
 
-        // -- Main Area -------------------------------------
+        // -- Main Area (panels + keyboard) ------------------
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .wrapContentHeight()
+                .weight(1f)
                 .background(HorizonColors.Background)
                 .padding(start = 6.dp, end = 6.dp, top = 8.dp, bottom = 8.dp)
         ) {
@@ -150,25 +122,17 @@ fun KeyboardScreen(
                         longPressDelayMs = longPressDelayMs,
                         keyHeightMultiplier = keyHeightMultiplier,
                         onKeyPress = { action ->
-                            // FIX: Only vibrate if haptics are enabled in settings
                             if (isHapticsEnabled) {
                                 performHapticFeedback(context)
                             }
-                            // FIX: Play key click sound if sound is enabled in settings.
-                            // Previously, the isSoundEnabled setting existed in KeyboardSettings
-                            // and SettingsPanel but had zero effect — no sound was ever played.
                             if (isSoundEnabled) {
                                 performKeyPressSound(context)
                             }
                             when (action) {
                                 KeyAction.NumberToggle -> {
-                                    // FIX: Toggle number layer and reset shift state.
-                                    // Previously, switching to number layer with shift active
-                                    // caused visual inconsistency — the shift key appeared active
-                                    // in the number layer which doesn't support shifting.
                                     isNumberLayer = !isNumberLayer
                                     if (viewModel.isShiftOn) {
-                                        viewModel.onKeyPress(KeyAction.Shift) // Toggle shift off
+                                        viewModel.onKeyPress(KeyAction.Shift)
                                     }
                                 }
                                 else -> viewModel.onKeyPress(action)
@@ -181,6 +145,9 @@ fun KeyboardScreen(
                 }
                 KeyboardTab.CLIPBOARD -> {
                     ClipboardPanel(viewModel = viewModel)
+                }
+                KeyboardTab.TERMINAL -> {
+                    TerminalPanel()
                 }
                 KeyboardTab.SETTINGS -> {
                     SettingsPanel(settings = settings)
@@ -247,23 +214,18 @@ private fun performHapticFeedback(context: Context) {
             }
         }
     } catch (e: Exception) {
-        // Silently ignore vibration errors - not critical for keyboard function
+        // Silently ignore vibration errors
     }
 }
 
 /**
  * Plays the system key press sound if sound feedback is enabled.
- *
- * FIX: Previously, the isSoundEnabled setting existed in KeyboardSettings and
- * SettingsPanel but had zero effect — no sound was ever played anywhere in the code.
- * Now this function plays the standard Android keyboard click sound using
- * AudioManager when the setting is enabled.
  */
 private fun performKeyPressSound(context: Context) {
     try {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         audioManager.playSoundEffect(AudioManager.FX_KEY_CLICK, -1f)
     } catch (e: Exception) {
-        // Silently ignore sound errors - not critical for keyboard function
+        // Silently ignore sound errors
     }
 }
