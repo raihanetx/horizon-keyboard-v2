@@ -4,6 +4,7 @@ import android.inputmethodservice.InputMethodService
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.view.ViewParent
 import android.view.ViewGroup
 import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.EditorInfo
@@ -99,13 +100,12 @@ class MiMoInputMethodService : InputMethodService() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             )
+            // Set owners on our container using extension function syntax
+            setViewTreeLifecycleOwner(lifecycleOwner)
+            setViewTreeViewModelStoreOwner(lifecycleOwner)
+            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
         }
         container = frame
-
-        // Set owners on our container
-        setViewTreeLifecycleOwner(frame, lifecycleOwner)
-        setViewTreeViewModelStoreOwner(frame, lifecycleOwner)
-        setViewTreeSavedStateRegistryOwner(frame, lifecycleOwner)
 
         // When the FrameLayout is attached to the window, propagate owners
         // to ALL ancestor views (including the system's LinearLayout parentPanel),
@@ -138,12 +138,13 @@ class MiMoInputMethodService : InputMethodService() {
                     // The system adds our FrameLayout as a child of a LinearLayout
                     // (id=parentPanel). Compose's WindowRecomposer starts its search
                     // from the window root, so we MUST set the owner on every ancestor.
-                    var parent = v.parent
-                    while (parent is View) {
-                        setViewTreeLifecycleOwner(parent as View, lifecycleOwner)
-                        setViewTreeViewModelStoreOwner(parent as View, lifecycleOwner)
-                        setViewTreeSavedStateRegistryOwner(parent as View, lifecycleOwner)
-                        parent = (parent as View).parent
+                    var currentParent: ViewParent? = v.parent
+                    while (currentParent is View) {
+                        val parentView = currentParent as View
+                        parentView.setViewTreeLifecycleOwner(lifecycleOwner)
+                        parentView.setViewTreeViewModelStoreOwner(lifecycleOwner)
+                        parentView.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+                        currentParent = parentView.parent
                     }
 
                     // Now that owners are set on all ancestors, add the ComposeView.
