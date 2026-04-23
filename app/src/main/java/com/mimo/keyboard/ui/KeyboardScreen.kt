@@ -134,13 +134,21 @@ fun KeyboardScreen(
         )
 
         // -- Main Area (panels + keyboard) ------------------
-        // Fixed height instead of .weight(1f) to prevent the keyboard from
-        // expanding to fill the entire screen. The keyboard should be compact
-        // and anchored at the bottom, not stretched to the top.
+        // BUG FIX: Use wrapContentHeight() instead of fixed 200.dp.
+        // Fixed height caused two issues:
+        // 1. With keyHeightMultiplier > 1.0 (from Settings), keys overflow the
+        //    200dp box and bottom keys become untouchable
+        // 2. Different panels (Voice, Translate, Clipboard, Settings) have
+        //    different content heights — fixed height clips or wastes space
+        //
+        // wrapContentHeight() lets each panel determine its own height.
+        // The InputMethodService positions the keyboard at the bottom of the
+        // screen, so there's no risk of the keyboard expanding to fill the
+        // entire screen — that was caused by .weight(1f), not wrapContentHeight.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp)
+                .wrapContentHeight()
                 .background(HorizonColors.Background)
                 .padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 2.dp)
         ) {

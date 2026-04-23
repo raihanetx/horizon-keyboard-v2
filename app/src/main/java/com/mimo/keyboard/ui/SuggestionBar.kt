@@ -1,6 +1,5 @@
 package com.mimo.keyboard.ui
 
-import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -13,7 +12,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.mimo.keyboard.KeyAction
 import com.mimo.keyboard.ui.theme.HorizonColors
 
 /**
@@ -22,6 +20,11 @@ import com.mimo.keyboard.ui.theme.HorizonColors
  *
  * In the HTML prototype, this slides up with animation when
  * State.val.length > 0 && State.tab === 'keyboard'.
+ *
+ * BUG FIX: Replaced AnimatedVisibility with simple conditional rendering.
+ * AnimatedVisibility in an InputMethodService can intercept touch events
+ * even during its exit animation, making keys behind it unresponsive.
+ * Simple conditional rendering avoids this issue entirely.
  */
 @Composable
 fun SuggestionBar(
@@ -30,18 +33,9 @@ fun SuggestionBar(
     onSuggestionClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    AnimatedVisibility(
-        visible = isVisible,
-        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(
-            animationSpec = androidx.compose.animation.core.tween(durationMillis = 200)
-        ),
-        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(
-            animationSpec = androidx.compose.animation.core.tween(durationMillis = 150)
-        ),
-        modifier = modifier
-    ) {
+    if (isVisible && suggestions.isNotEmpty()) {
         Row(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxWidth()
                 .height(40.dp)
                 .background(HorizonColors.Background),

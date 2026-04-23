@@ -255,39 +255,73 @@ class MiMoInputMethodService : InputMethodService() {
 
     /**
      * Compute insets so the system knows exactly where the keyboard
-     * content is. This is critical for touch event delivery — if the
-     * touchable region doesn't cover the toolbar, taps on Translate/
-     * Voice/Clipboard/Settings icons will be routed to the app behind
-     * the keyboard instead of the keyboard itself.
+     * content is. This is CRITICAL for touch event delivery.
      *
-     * We use the INPUT VIEW's actual position on screen to compute
-     * insets, which is more reliable than estimating heights.
+     * BUG FIX: Previous implementation used getLocationOnScreen() which returns
+     * absolute screen coordinates (e.g., y=2100) for contentTopInsets. But
+     * contentTopInsets expects WINDOW-RELATIVE coordinates (distance from the
+     * top of the IME window, e.g., y=0). Setting contentTopInsets=2100 told
+     * the system the content starts 2100px below the IME window — making the
+     * ENTIRE keyboard untouchable!
+     *
+     * Also, touchableRegion was being set but touchableInsets was never set
+     * to TOUCHABLE_INSETS_REGION, so the touchableRegion was COMPLETELY IGNORED.
+     * The system used the default TOUCHABLE_INSETS_CONTENT which only covers
+     * below contentTopInsets — which was set to an absurdly large value.
+     *
+     * Fix:
+     * 1. Use getLocationInWindow() for window-relative contentTopInsets
+     * 2. Set touchableInsets = TOUCHABLE_INSETS_REGION so touchableRegion is used
+     * 3. Use getLocationOnScreen() for touchableRegion (which expects screen coords)
+     * 4. Provide generous fallback when container is not yet laid out
      */
     override fun onComputeInsets(outInsets: Insets?) {
         super.onComputeInsets(outInsets)
         if (outInsets != null) {
-            // Use our container view's actual screen position to compute insets.
-            // This is critical for touch event delivery — if the touchable region
-            // doesn't cover the toolbar, taps on Translate/Voice/Clipboard/Settings
-            // icons will be routed to the app behind the keyboard instead.
             val containerView = container
             if (containerView != null && containerView.isShown) {
-                val location = IntArray(2)
-                containerView.getLocationOnScreen(location)
-                val viewTop = location[1]
+                // Window-relative coordinates for contentTopInsets / visibleTopInsets
+                // These tell the system where the keyboard content starts relative
+                // to the IME window's top edge.
+                val windowLocation = IntArray(2)
+                containerView.getLocationInWindow(windowLocation)
+                val viewTopInWindow = windowLocation[1]
 
-                outInsets.contentTopInsets = viewTop
-                outInsets.visibleTopInsets = viewTop
+                outInsets.contentTopInsets = viewTopInWindow
+                outInsets.visibleTopInsets = viewTopInWindow
 
-                // Touchable region covers from top of our view to bottom of screen.
-                // This ensures the toolbar receives touch events.
+                // Screen coordinates for touchableRegion (the system expects
+                // screen coords for the region). This ensures the toolbar and
+                // all keyboard areas receive touch events.
+                val screenLocation = IntArray(2)
+                containerView.getLocationOnScreen(screenLocation)
+                val viewTopOnScreen = screenLocation[1]
+
+                // CRITICAL: Set touchableInsets to REGION so our touchableRegion
+                // is actually used. Without this, the system ignores touchableRegion
+                // and uses the default content-based calculation.
+                outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
                 outInsets.touchableRegion.set(
-                    0, viewTop,
+                    0, viewTopOnScreen,
                     resources.displayMetrics.widthPixels,
-                    resources.displayMetrics.heightPixels
+                    viewTopOnScreen + containerView.height
+                )
+            } else {
+                // Fallback: when container is not yet laid out, provide generous
+                // defaults so the keyboard is touchable from the start.
+                // Use a conservative estimate: bottom 40% of the screen.
+                val screenHeight = resources.displayMetrics.heightPixels
+                val estimatedTop = (screenHeight * 0.6).toInt()
+
+                outInsets.contentTopInsets = 0
+                outInsets.visibleTopInsets = 0
+                outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+                outInsets.touchableRegion.set(
+                    0, estimatedTop,
+                    resources.displayMetrics.widthPixels,
+                    screenHeight
                 )
             }
-            // If container not yet laid out, let super's default handle it
         }
     }
 

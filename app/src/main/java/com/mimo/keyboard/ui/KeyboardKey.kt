@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -166,8 +167,12 @@ fun KeyboardKey(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(keyHeightDp.dp)
+                // BUG FIX: Use graphicsLayer translationY instead of Modifier.offset().
+                // Modifier.offset() shifts the visual rendering but NOT the touch target
+                // in Compose, causing misaligned touch feedback. graphicsLayer.translationY
+                // shifts both visual and touch target together.
                 .then(
-                    if (isPressed) Modifier.offset(y = 1.dp) else Modifier
+                    if (isPressed) Modifier.graphicsLayer { translationY = 1f } else Modifier
                 )
                 .shadow(
                     elevation = if (isPressed) 1.dp else 4.dp,
@@ -229,9 +234,14 @@ fun KeyboardKey(
             val density = LocalDensity.current
             val popupOffsetY = with(density) { (-12).dp.roundToPx() }
 
+            // BUG FIX: focusable = false instead of true.
+            // In InputMethodService, a focusable Popup creates a new window
+            // that can steal focus from the IME's input connection. This
+            // disrupts touch dispatch and causes the system to route touches
+            // to the underlying app instead of the keyboard.
             Popup(
                 properties = PopupProperties(
-                    focusable = true,
+                    focusable = false,
                     dismissOnBackPress = true,
                     dismissOnClickOutside = true
                 ),
