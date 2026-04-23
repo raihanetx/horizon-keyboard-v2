@@ -40,7 +40,7 @@ fun SettingsPanel(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    // FIX: Use the shared KeyboardSettings instance from MiMoInputMethodService
+    // FIX: Use the shared KeyboardSettings instance from HorizonInputMethodService
     // if provided, instead of always creating a new one. Previously, SettingsPanel
     // always created its own instance via KeyboardSettings(context). Both instances
     // used the same SharedPreferences file, so data was shared, but this was wasteful
@@ -217,7 +217,7 @@ fun SettingsPanel(
                     color = HorizonColors.TextPrimary
                 )
                 Text(
-                    text = "1.3.0",
+                    text = "1.9.0",
                     fontSize = 13.sp,
                     fontFamily = FontFamily.Monospace,
                     color = HorizonColors.TextMuted

@@ -250,4 +250,4 @@ private fun readClipboardHistory(clipboardManager: ClipboardManager): List<Strin
 }
 
 private const val MAX_CLIPBOARD_ITEMS = 10
-private const val CLIPBOARD_POLL_INTERVAL_MS = 1500L
+private const val CLIPBOARD_POLL_INTERVAL_MS = 3000L

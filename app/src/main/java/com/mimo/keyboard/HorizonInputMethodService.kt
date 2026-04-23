@@ -45,10 +45,10 @@ import com.mimo.keyboard.ui.theme.HorizonKeyboardTheme
  * (including the system's LinearLayout), THEN add the ComposeView. This guarantees
  * that the LifecycleOwner is available BEFORE ComposeView.onAttachedToWindow fires.
  */
-class MiMoInputMethodService : InputMethodService() {
+class HorizonInputMethodService : InputMethodService() {
 
     companion object {
-        private const val TAG = "MiMoIME"
+        private const val TAG = "HorizonIME"
     }
 
     // Created once in onCreate, reused across multiple onCreateInputView calls
@@ -69,8 +69,9 @@ class MiMoInputMethodService : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         keyboardSettings = KeyboardSettings(this)
-        viewModel = KeyboardViewModel(keyboardSettings)
-        voiceRecognizer = VoiceRecognizer(this, viewModel!!)
+        val vm = KeyboardViewModel(keyboardSettings)
+        viewModel = vm
+        voiceRecognizer = VoiceRecognizer(this, vm)
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
 
         // Set up the mic permission request callback
@@ -104,7 +105,6 @@ class MiMoInputMethodService : InputMethodService() {
 
         val vm = viewModel ?: KeyboardViewModel(keyboardSettings).also { viewModel = it }
         val settings = keyboardSettings ?: KeyboardSettings(this).also { keyboardSettings = it }
-        val density = resources.displayMetrics.density
 
         // Create a FrameLayout that wraps the ComposeView.
         // The ComposeView content controls its own height (WRAP_CONTENT),
@@ -162,16 +162,16 @@ class MiMoInputMethodService : InputMethodService() {
                             ?: KeyboardViewModel(keyboardSettings).also { viewModel = it }
                         val currentSettings = settings
                             ?: keyboardSettings
-                            ?: KeyboardSettings(this@MiMoInputMethodService).also { keyboardSettings = it }
+                            ?: KeyboardSettings(this@HorizonInputMethodService).also { keyboardSettings = it }
 
-                        val newComposeView = ComposeView(this@MiMoInputMethodService).apply {
+                        val newComposeView = ComposeView(this@HorizonInputMethodService).apply {
                             setContent {
                                 HorizonKeyboardTheme {
                                     KeyboardScreen(
                                         viewModel = currentVm,
                                         settings = currentSettings,
                                         voiceRecognizer = voiceRecognizer,
-                                        inputMethodService = this@MiMoInputMethodService
+                                        inputMethodService = this@HorizonInputMethodService
                                     )
                                 }
                             }
@@ -203,7 +203,7 @@ class MiMoInputMethodService : InputMethodService() {
     private fun showErrorInView(frame: ViewGroup, e: Exception) {
         try {
             frame.removeAllViews()
-            val errorText = TextView(this@MiMoInputMethodService).apply {
+            val errorText = TextView(this@HorizonInputMethodService).apply {
                 text = "Horizon KB Error:\n${e.javaClass.simpleName}: ${e.message}\n\nCheck logcat for details."
                 setTextColor(0xFFFF453A.toInt())
                 setTextSize(12f)
@@ -224,7 +224,7 @@ class MiMoInputMethodService : InputMethodService() {
      */
     private fun requestMicPermission() {
         try {
-            val intent = Intent(this, MiMoSettingsActivity::class.java).apply {
+            val intent = Intent(this, HorizonSettingsActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 putExtra("request_mic_permission", true)

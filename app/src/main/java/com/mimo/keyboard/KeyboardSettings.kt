@@ -16,7 +16,7 @@ import android.content.SharedPreferences
  * Usage:
  * - KeyboardViewModel reads settings to decide behavior (e.g., haptics on/off)
  * - SettingsPanel writes settings via toggle callbacks
- * - MiMoInputMethodService creates the instance and passes it down
+ * - HorizonInputMethodService creates the instance and passes it down
  */
 class KeyboardSettings(context: Context) {
 

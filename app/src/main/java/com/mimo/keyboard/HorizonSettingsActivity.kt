@@ -44,7 +44,7 @@ import com.mimo.keyboard.ui.theme.HorizonKeyboardTheme
  * that shows any crash error directly on screen so users can
  * read and copy the error message.
  */
-class MiMoSettingsActivity : ComponentActivity() {
+class HorizonSettingsActivity : ComponentActivity() {
 
     companion object {
         // Global error message that persists across activity recreation
@@ -241,7 +241,7 @@ private fun SettingsScreen() {
         // Show error if any
         if (errorMessage != null) {
             Text(
-                text = errorMessage!!,
+                text = errorMessage ?: "",
                 fontSize = 12.sp,
                 color = HorizonColors.Error,
                 fontFamily = FontFamily.Monospace,
@@ -320,7 +320,7 @@ private fun SettingsScreen() {
         Spacer(modifier = Modifier.height(40.dp))
 
         Text(
-            text = "v1.8.0",
+            text = "v1.9.0",
             fontSize = 12.sp,
             color = HorizonColors.TextExtraMuted,
             fontFamily = FontFamily.Monospace

@@ -1,13 +1,11 @@
 package com.mimo.keyboard.ui
 
 import android.content.Context
-import android.content.Intent
 import android.media.AudioManager
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,7 +27,7 @@ import com.mimo.keyboard.KeyAction
 import com.mimo.keyboard.KeyboardSettings
 import com.mimo.keyboard.KeyboardTab
 import com.mimo.keyboard.KeyboardViewModel
-import com.mimo.keyboard.MiMoInputMethodService
+import com.mimo.keyboard.HorizonInputMethodService
 import com.mimo.keyboard.VoiceRecognizer
 import com.mimo.keyboard.ui.panels.ClipboardPanel
 import com.mimo.keyboard.ui.panels.SettingsPanel
@@ -56,7 +54,7 @@ fun KeyboardScreen(
     viewModel: KeyboardViewModel,
     settings: KeyboardSettings? = null,
     voiceRecognizer: VoiceRecognizer? = null,
-    inputMethodService: MiMoInputMethodService? = null,
+    inputMethodService: HorizonInputMethodService? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -95,7 +93,7 @@ fun KeyboardScreen(
                     viewModel.refreshSuggestions()
                 }
             }
-            kotlinx.coroutines.delay(500)
+            kotlinx.coroutines.delay(1500)
         }
     }
 
@@ -208,7 +206,7 @@ fun KeyboardScreen(
 private fun VoicePanel(
     viewModel: KeyboardViewModel,
     voiceRecognizer: VoiceRecognizer?,
-    inputMethodService: MiMoInputMethodService? = null,
+    inputMethodService: HorizonInputMethodService? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -320,7 +318,13 @@ private fun VoicePanel(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = {
-                        if (!hasMicPermission) return@clickable
+                        if (!hasMicPermission) {
+                            // BUG FIX: Previously did nothing (just returned).
+                            // Now requests mic permission through the InputMethodService
+                            // so the user gets prompted to grant access.
+                            inputMethodService?.onRequestMicPermission?.invoke()
+                            return@clickable
+                        }
                         if (isListening) {
                             voiceRecognizer?.stopListening()
                         } else {

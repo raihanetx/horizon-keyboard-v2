@@ -16,7 +16,7 @@
 
         <!-- Input Method Service - the core keyboard service -->
         <service
-            android:name=".MiMoInputMethodService"
+            android:name=".HorizonInputMethodService"
             android:exported="true"
             android:permission="android.permission.BIND_INPUT_METHOD"
             android:directBootAware="false">
@@ -30,7 +30,7 @@
 
         <!-- Settings Activity so users can enable the keyboard -->
         <activity
-            android:name=".MiMoSettingsActivity"
+            android:name=".HorizonSettingsActivity"
             android:exported="true"
             android:label="Horizon Keyboard"
             android:theme="@style/Theme.HorizonKeyboard"

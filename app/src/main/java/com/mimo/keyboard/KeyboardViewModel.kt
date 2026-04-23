@@ -279,7 +279,7 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
      *
      * We read up to MAX_SYNC_LENGTH chars before cursor for suggestion context.
      *
-     * Public so MiMoInputMethodService can call it from onUpdateCursorAnchorInfo()
+     * Public so HorizonInputMethodService can call it from onUpdateCursorAnchorInfo()
      * when the user taps to reposition the cursor in the text field.
      */
     fun syncFromInputConnection(ic: InputConnection) {
@@ -432,6 +432,16 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
     }
 
     /**
+     * Sets voice listening state WITHOUT clearing recognized text.
+     * Used by onEndOfSpeech() which fires BEFORE onResults().
+     * Clearing text in onEndOfSpeech caused the preview to flash empty
+     * before the final result could be committed.
+     */
+    fun setVoiceListeningKeepText(isListening: Boolean) {
+        _isVoiceListening = isListening
+    }
+
+    /**
      * Updates the voice recognized text (partial or final).
      */
     fun setVoiceRecognizedText(text: String) {
@@ -518,7 +528,7 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
      * Clears all state (e.g., when input field switches).
      *
      * Note: This does NOT clear the inputConnection reference — that's handled
-     * separately by MiMoInputMethodService.onFinishInput(). The IC is refreshed
+     * separately by HorizonInputMethodService.onFinishInput(). The IC is refreshed
      * by onStartInput() before reset() is called, so we keep the new IC intact.
      */
     fun reset() {

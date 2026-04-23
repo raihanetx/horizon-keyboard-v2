@@ -127,7 +127,15 @@ class VoiceRecognizer(
 
         override fun onEndOfSpeech() {
             Log.d(TAG, "End of speech detected")
-            viewModel.setVoiceListening(false)
+            // BUG FIX: Only set listening to false, do NOT clear _voiceRecognizedText.
+            // Previously, setVoiceListening(false) also cleared _voiceRecognizedText.
+            // But onEndOfSpeech fires BEFORE onResults — so the recognized text was
+            // cleared before it could be committed. The user saw the preview flash
+            // empty, then the text was silently committed with no visual feedback.
+            //
+            // Fix: Set listening state directly without clearing recognized text.
+            // onResults() will commit the text and clear it afterward.
+            viewModel.setVoiceListeningKeepText(false)
         }
 
         override fun onError(error: Int) {

@@ -26,8 +26,8 @@ import androidx.compose.ui.unit.sp
 import com.mimo.keyboard.KeyboardSettings
 import com.mimo.keyboard.KeyboardTab
 import com.mimo.keyboard.KeyboardViewModel
-import com.mimo.keyboard.MiMoInputMethodService
-import com.mimo.keyboard.MiMoSettingsActivity
+import com.mimo.keyboard.HorizonInputMethodService
+import com.mimo.keyboard.HorizonSettingsActivity
 import com.mimo.keyboard.VoiceRecognizer
 import com.mimo.keyboard.R
 import com.mimo.keyboard.ui.theme.HorizonColors
@@ -46,7 +46,7 @@ fun ToolbarHeader(
     viewModel: KeyboardViewModel? = null,
     voiceRecognizer: VoiceRecognizer? = null,
     settings: KeyboardSettings? = null,
-    inputMethodService: MiMoInputMethodService? = null
+    inputMethodService: HorizonInputMethodService? = null
 ) {
     Box(
         modifier = modifier
@@ -170,7 +170,7 @@ private fun VoiceOverlayContent(
     viewModel: KeyboardViewModel?,
     voiceRecognizer: VoiceRecognizer?,
     settings: KeyboardSettings?,
-    inputMethodService: MiMoInputMethodService? = null,
+    inputMethodService: HorizonInputMethodService? = null,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current

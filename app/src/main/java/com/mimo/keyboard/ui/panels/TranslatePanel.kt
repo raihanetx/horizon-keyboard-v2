@@ -290,7 +290,7 @@ private val enToEsDictionary = mapOf(
     "is" to "es", "am" to "soy", "are" to "son", "was" to "fue", "were" to "fueron",
     "be" to "ser", "have" to "tener", "has" to "tiene", "had" to "tuvo",
     "do" to "hacer", "does" to "hace", "did" to "hizo",
-    "will" to "futuro", "would" to "condicional", "can" to "poder", "could" to "podría",
+    "will" to "voluntad", "would" to "condicional", "can" to "poder", "could" to "podría",
     "should" to "debería", "may" to "puede", "might" to "podría",
     "go" to "ir", "going" to "yendo", "went" to "fue", "gone" to "ido",
     "come" to "venir", "came" to "vino", "coming" to "viniendo",
@@ -319,7 +319,7 @@ private val enToEsDictionary = mapOf(
     "play" to "jugar", "run" to "correr", "move" to "mover",
     "live" to "vivir", "believe" to "creer", "hold" to "sostener",
     "bring" to "traer", "happen" to "suceder", "write" to "escribir",
-    "provide" to "proporcionar", "sit" to "sentar", "stand" to "estar",
+    "provide" to "proporcionar", "sit" to "sentar", "stand" to "soportar",
     "lose" to "perder", "pay" to "pagar", "meet" to "conocer",
     "include" to "incluir", "continue" to "continuar", "set" to "establecer",
     "learn" to "aprender", "change" to "cambiar", "lead" to "liderar",
@@ -342,7 +342,7 @@ private val enToEsDictionary = mapOf(
 
     // Common Nouns
     "hello" to "hola", "goodbye" to "adiós", "please" to "por favor",
-    "thanks" to "gracias", "thank" to "gracia", "sorry" to "lo siento",
+    "thanks" to "gracias", "thank" to "gracias", "sorry" to "lo siento",
     "yes" to "sí", "no" to "no", "maybe" to "quizás", "not" to "no",
     "time" to "tiempo", "day" to "día", "night" to "noche",
     "morning" to "mañana", "afternoon" to "tarde", "evening" to "noche",
@@ -466,7 +466,7 @@ private val esToEnDictionary = mapOf(
     "jugar" to "play", "correr" to "run", "mover" to "move",
     "vivir" to "live", "creer" to "believe", "sostener" to "hold",
     "traer" to "bring", "suceder" to "happen", "escribir" to "write",
-    "proporcionar" to "provide", "sentar" to "sit", "estar" to "be/stand",
+    "proporcionar" to "provide", "sentar" to "sit", "estar" to "be",
     "perder" to "lose", "pagar" to "pay", "conocer" to "meet/know",
     "incluir" to "include", "continuar" to "continue", "establecer" to "set",
     "aprender" to "learn", "cambiar" to "change", "liderar" to "lead",
@@ -485,7 +485,7 @@ private val esToEnDictionary = mapOf(
 
     // Common Nouns
     "hola" to "hello", "adiós" to "goodbye",
-    "gracias" to "thanks", "gracia" to "thank",
+    "gracias" to "thanks/thank", "gracia" to "grace",
     "lo siento" to "sorry", "sí" to "yes", "no" to "no/not", "quizás" to "maybe",
     "tiempo" to "time", "día" to "day", "noche" to "night",
     "mañana" to "morning/tomorrow", "tarde" to "afternoon",
