@@ -2,6 +2,8 @@ package com.mimo.keyboard.ui
 
 import android.content.pm.PackageManager
 import android.Manifest
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -29,6 +31,8 @@ import androidx.compose.ui.unit.sp
 import com.mimo.keyboard.KeyboardSettings
 import com.mimo.keyboard.KeyboardTab
 import com.mimo.keyboard.KeyboardViewModel
+import com.mimo.keyboard.MiMoInputMethodService
+import com.mimo.keyboard.MiMoSettingsActivity
 import com.mimo.keyboard.VoiceRecognizer
 import com.mimo.keyboard.R
 import com.mimo.keyboard.ui.theme.HorizonColors
@@ -46,7 +50,8 @@ fun ToolbarHeader(
     modifier: Modifier = Modifier,
     viewModel: KeyboardViewModel? = null,
     voiceRecognizer: VoiceRecognizer? = null,
-    settings: KeyboardSettings? = null
+    settings: KeyboardSettings? = null,
+    inputMethodService: MiMoInputMethodService? = null
 ) {
     Box(
         modifier = modifier
@@ -65,6 +70,7 @@ fun ToolbarHeader(
                 viewModel = viewModel,
                 voiceRecognizer = voiceRecognizer,
                 settings = settings,
+                inputMethodService = inputMethodService,
                 onClose = { 
                     voiceRecognizer?.stopListening()
                     onTabSelected(KeyboardTab.KEYBOARD) 
@@ -177,6 +183,7 @@ private fun VoiceOverlayContent(
     viewModel: KeyboardViewModel?,
     voiceRecognizer: VoiceRecognizer?,
     settings: KeyboardSettings?,
+    inputMethodService: MiMoInputMethodService? = null,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
@@ -262,7 +269,8 @@ private fun VoiceOverlayContent(
                     indication = null,
                     onClick = {
                         if (!hasMicPermission) {
-                            // Can't start without permission — show a hint
+                            // Request mic permission through the service
+                            inputMethodService?.onRequestMicPermission?.invoke()
                             return@clickable
                         }
                         if (isListening) {

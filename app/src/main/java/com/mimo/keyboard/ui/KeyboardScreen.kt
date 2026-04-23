@@ -1,11 +1,13 @@
 package com.mimo.keyboard.ui
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioManager
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,6 +29,7 @@ import com.mimo.keyboard.KeyAction
 import com.mimo.keyboard.KeyboardSettings
 import com.mimo.keyboard.KeyboardTab
 import com.mimo.keyboard.KeyboardViewModel
+import com.mimo.keyboard.MiMoInputMethodService
 import com.mimo.keyboard.VoiceRecognizer
 import com.mimo.keyboard.ui.panels.ClipboardPanel
 import com.mimo.keyboard.ui.panels.SettingsPanel
@@ -53,6 +56,7 @@ fun KeyboardScreen(
     viewModel: KeyboardViewModel,
     settings: KeyboardSettings? = null,
     voiceRecognizer: VoiceRecognizer? = null,
+    inputMethodService: MiMoInputMethodService? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -114,7 +118,8 @@ fun KeyboardScreen(
             },
             viewModel = viewModel,
             voiceRecognizer = voiceRecognizer,
-            settings = settings
+            settings = settings,
+            inputMethodService = inputMethodService
         )
 
         // -- Suggestion Bar (appears when typing) -----------
@@ -164,7 +169,8 @@ fun KeyboardScreen(
                 KeyboardTab.VOICE -> {
                     VoicePanel(
                         viewModel = viewModel,
-                        voiceRecognizer = voiceRecognizer
+                        voiceRecognizer = voiceRecognizer,
+                        inputMethodService = inputMethodService
                     )
                 }
                 KeyboardTab.TRANSLATE -> {
@@ -189,6 +195,7 @@ fun KeyboardScreen(
 private fun VoicePanel(
     viewModel: KeyboardViewModel,
     voiceRecognizer: VoiceRecognizer?,
+    inputMethodService: MiMoInputMethodService? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -346,14 +353,48 @@ private fun VoicePanel(
                 )
             }
         } else if (!hasMicPermission) {
-            // Permission hint
-            Text(
-                text = "Microphone permission required.\nPlease enable it in Settings.",
-                fontSize = 11.sp,
-                color = HorizonColors.Error,
-                fontFamily = FontFamily.Monospace,
-                lineHeight = 16.sp
-            )
+            // Permission request button — tappable to request mic permission
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Microphone access needed\nfor voice typing",
+                    fontSize = 11.sp,
+                    color = HorizonColors.TextMuted,
+                    fontFamily = FontFamily.Monospace,
+                    lineHeight = 16.sp
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(HorizonColors.Accent.copy(alpha = 0.15f))
+                        .border(
+                            width = 1.dp,
+                            color = HorizonColors.Accent.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                // Request permission through the InputMethodService
+                                inputMethodService?.onRequestMicPermission?.invoke()
+                            }
+                        )
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "ALLOW MICROPHONE",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = HorizonColors.Accent,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp
+                    )
+                }
+            }
         } else if (!isListening) {
             Text(
                 text = "Tap MIC to start voice typing",

@@ -2,6 +2,7 @@ package com.mimo.keyboard
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
@@ -9,6 +10,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -25,6 +27,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.mimo.keyboard.ui.theme.HorizonColors
 import com.mimo.keyboard.ui.theme.HorizonKeyboardTheme
 
@@ -48,11 +51,27 @@ class MiMoSettingsActivity : ComponentActivity() {
         var lastCrashError: String? = null
     }
 
+    // Permission request launcher for microphone access
+    private val micPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        // After the user responds, finish this activity to return to the keyboard
+        finish()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // Install crash handler that shows errors on screen
         installCrashHandler()
+
+        // Check if this activity was launched to request mic permission
+        val requestMicPermission = intent?.getBooleanExtra("request_mic_permission", false) ?: false
+        if (requestMicPermission) {
+            // Directly request the microphone permission
+            requestMicPermissionAndFinish()
+            return
+        }
 
         // Check if there was a previous crash
         val crashError = lastCrashError
@@ -72,6 +91,24 @@ class MiMoSettingsActivity : ComponentActivity() {
             // If Compose fails entirely, show error in a plain Android view
             showErrorScreen(formatException(e))
         }
+    }
+
+    /**
+     * Requests the RECORD_AUDIO permission and finishes the activity.
+     * If the permission is already granted, just finishes.
+     * This is called when the keyboard's voice panel needs mic access.
+     */
+    private fun requestMicPermissionAndFinish() {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            // Already granted, just finish
+            finish()
+            return
+        }
+
+        // Request the permission — the launcher callback will finish() the activity
+        micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
     }
 
     /**

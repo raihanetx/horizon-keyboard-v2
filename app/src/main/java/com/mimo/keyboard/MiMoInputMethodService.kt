@@ -1,8 +1,11 @@
 package com.mimo.keyboard
 
+import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
+import android.view.Gravity
 import android.view.View
 import android.view.ViewParent
 import android.view.ViewGroup
@@ -10,6 +13,7 @@ import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
@@ -52,7 +56,7 @@ class MiMoInputMethodService : InputMethodService() {
     private var viewModel: KeyboardViewModel? = null
     private val lifecycleOwner = ServiceLifecycleOwner()
     private var composeView: ComposeView? = null
-    private var container: FrameLayout? = null
+    private var container: ViewGroup? = null
 
     // KeyboardSettings for user preferences
     private var keyboardSettings: KeyboardSettings? = null
@@ -60,12 +64,20 @@ class MiMoInputMethodService : InputMethodService() {
     // VoiceRecognizer for voice typing
     private var voiceRecognizer: VoiceRecognizer? = null
 
+    // Callback for requesting mic permission from the keyboard UI
+    var onRequestMicPermission: (() -> Unit)? = null
+
     override fun onCreate() {
         super.onCreate()
         keyboardSettings = KeyboardSettings(this)
         viewModel = KeyboardViewModel(keyboardSettings)
         voiceRecognizer = VoiceRecognizer(this, viewModel!!)
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+
+        // Set up the mic permission request callback
+        onRequestMicPermission = {
+            requestMicPermission()
+        }
     }
 
     override fun onCreateInputView(): View {
@@ -95,12 +107,18 @@ class MiMoInputMethodService : InputMethodService() {
         val settings = keyboardSettings ?: KeyboardSettings(this).also { keyboardSettings = it }
         val density = resources.displayMetrics.density
 
-        // Create a plain FrameLayout as the root view we return to the system.
-        val frame = FrameLayout(this).apply {
+        // Create a LinearLayout with gravity=bottom so the keyboard
+        // stays anchored to the bottom of the input area.
+        // FIX: Previously used FrameLayout which could cause the keyboard
+        // to appear at the top. LinearLayout with BOTTOM gravity ensures
+        // the keyboard content is always at the bottom of the window.
+        val frame = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.BOTTOM
             minimumHeight = (270 * density).toInt()
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
             )
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeViewModelStoreOwner(lifecycleOwner)
@@ -121,7 +139,7 @@ class MiMoInputMethodService : InputMethodService() {
      * 2. Adds the ComposeView to the container
      */
     private fun ensureOwnersPropagated(
-        frame: FrameLayout,
+        frame: ViewGroup,
         vm: KeyboardViewModel? = null,
         settings: KeyboardSettings? = null
     ) {
@@ -139,7 +157,7 @@ class MiMoInputMethodService : InputMethodService() {
                     }
 
                     // Now that owners are set on all ancestors, add the ComposeView.
-                    val existingCompose = composeView
+                            val existingCompose = composeView
                     if (existingCompose != null && existingCompose.parent == null) {
                         frame.addView(existingCompose)
                     } else if (composeView == null) {
@@ -156,7 +174,8 @@ class MiMoInputMethodService : InputMethodService() {
                                     KeyboardScreen(
                                         viewModel = currentVm,
                                         settings = currentSettings,
-                                        voiceRecognizer = voiceRecognizer
+                                        voiceRecognizer = voiceRecognizer,
+                                        inputMethodService = this@MiMoInputMethodService
                                     )
                                 }
                             }
@@ -179,7 +198,7 @@ class MiMoInputMethodService : InputMethodService() {
     /**
      * Shows an error message inside the FrameLayout using a plain TextView.
      */
-    private fun showErrorInView(frame: FrameLayout, e: Exception) {
+    private fun showErrorInView(frame: ViewGroup, e: Exception) {
         try {
             frame.removeAllViews()
             val errorText = TextView(this@MiMoInputMethodService).apply {
@@ -192,6 +211,35 @@ class MiMoInputMethodService : InputMethodService() {
             frame.addView(errorText)
         } catch (e2: Exception) {
             Log.e(TAG, "Failed to show error view", e2)
+        }
+    }
+
+    /**
+     * Requests microphone permission by launching the settings activity
+     * which handles the runtime permission request.
+     * InputMethodService cannot directly use requestPermissions()
+     * since it's not an Activity, so we delegate to our settings activity.
+     */
+    private fun requestMicPermission() {
+        try {
+            val intent = Intent(this, MiMoSettingsActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra("request_mic_permission", true)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch permission request activity", e)
+            // Fallback: open app settings
+            try {
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = android.net.Uri.fromParts("package", packageName, null)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(intent)
+            } catch (e2: Exception) {
+                Log.e(TAG, "Failed to open app settings too", e2)
+            }
         }
     }
 
