@@ -217,7 +217,7 @@ fun SettingsPanel(
                     color = HorizonColors.TextPrimary
                 )
                 Text(
-                    text = "1.9.0",
+                    text = "2.5.0",
                     fontSize = 13.sp,
                     fontFamily = FontFamily.Monospace,
                     color = HorizonColors.TextMuted
