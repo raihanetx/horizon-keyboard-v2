@@ -140,9 +140,9 @@ fun KeyboardScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(220.dp)
+                .height(200.dp)
                 .background(HorizonColors.Background)
-                .padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
+                .padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 2.dp)
         ) {
             // Panel visibility based on current tab
             when (viewModel.currentTab) {
@@ -438,7 +438,7 @@ private fun QwertyKeyboard(
 
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(7.dp)
+        verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         rows.forEach { rowKeys ->
             KeyboardRow(

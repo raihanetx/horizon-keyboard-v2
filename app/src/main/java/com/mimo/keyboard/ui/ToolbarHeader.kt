@@ -152,7 +152,8 @@ private fun ToolbarButton(
 
     Box(
         modifier = Modifier
-            .height(38.dp)
+            .fillMaxWidth()
+            .fillMaxHeight()
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

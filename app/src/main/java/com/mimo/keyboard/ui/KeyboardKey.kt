@@ -112,8 +112,8 @@ fun KeyboardKey(
         }
     }
 
-    // Determine the key shape — bigger corner radius for bulky feel
-    val keyShape = RoundedCornerShape(12.dp)
+    // Determine the key shape — less round corners for cleaner look
+    val keyShape = RoundedCornerShape(6.dp)
 
     // Background color with smooth animation — solid fills for bulky keys
     val backgroundColor by animateColorAsState(
@@ -143,11 +143,11 @@ fun KeyboardKey(
     )
 
     val fontSize = when (keyDef.style) {
-        KeyStyle.SPACE -> 12.sp
-        KeyStyle.ENTER -> 13.sp
-        KeyStyle.BACKSPACE -> 20.sp
-        KeyStyle.SPECIAL -> 15.sp
-        else -> 20.sp
+        KeyStyle.SPACE -> 11.sp
+        KeyStyle.ENTER -> 12.sp
+        KeyStyle.BACKSPACE -> 18.sp
+        KeyStyle.SPECIAL -> 14.sp
+        else -> 18.sp
     }
 
     val fontWeight = when (keyDef.style) {
@@ -157,8 +157,8 @@ fun KeyboardKey(
         else -> FontWeight.Medium
     }
 
-    // Key height — base 52dp with multiplier, giving more vertical bulk
-    val keyHeightDp = (52 * keyHeightMultiplier)
+    // Key height — base 44dp with multiplier, compact but easy to tap
+    val keyHeightDp = (44 * keyHeightMultiplier)
 
     Box(modifier = modifier) {
         // Main key — solid bulky box with prominent fill and border
@@ -197,13 +197,13 @@ fun KeyboardKey(
                     horizontal = when (keyDef.style) {
                         KeyStyle.SPACE -> 12.dp
                         KeyStyle.ENTER -> 8.dp
-                        KeyStyle.SPECIAL -> 6.dp
-                        else -> 6.dp
+                        KeyStyle.SPECIAL -> 4.dp
+                        else -> 2.dp
                     },
                     vertical = when (keyDef.style) {
-                        KeyStyle.SPACE -> 10.dp
-                        KeyStyle.ENTER -> 8.dp
-                        else -> 8.dp
+                        KeyStyle.SPACE -> 4.dp
+                        KeyStyle.ENTER -> 4.dp
+                        else -> 2.dp
                     }
                 ),
             contentAlignment = Alignment.Center
@@ -336,7 +336,7 @@ fun KeyboardRow(
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
+        horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally)
     ) {
         keys.forEach { keyDef ->
             Box(modifier = Modifier.weight(keyDef.weight)) {
