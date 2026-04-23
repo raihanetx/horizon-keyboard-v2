@@ -57,10 +57,14 @@ class MiMoInputMethodService : InputMethodService() {
     // KeyboardSettings for user preferences
     private var keyboardSettings: KeyboardSettings? = null
 
+    // VoiceRecognizer for voice typing
+    private var voiceRecognizer: VoiceRecognizer? = null
+
     override fun onCreate() {
         super.onCreate()
         keyboardSettings = KeyboardSettings(this)
         viewModel = KeyboardViewModel(keyboardSettings)
+        voiceRecognizer = VoiceRecognizer(this, viewModel!!)
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
     }
 
@@ -92,15 +96,12 @@ class MiMoInputMethodService : InputMethodService() {
         val density = resources.displayMetrics.density
 
         // Create a plain FrameLayout as the root view we return to the system.
-        // We do NOT return a ComposeView directly — instead we add it later
-        // AFTER propagating ViewTreeLifecycleOwner to ancestor views.
         val frame = FrameLayout(this).apply {
             minimumHeight = (270 * density).toInt()
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             )
-            // Set owners on our container using extension function syntax
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeViewModelStoreOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
@@ -108,9 +109,7 @@ class MiMoInputMethodService : InputMethodService() {
         container = frame
 
         // When the FrameLayout is attached to the window, propagate owners
-        // to ALL ancestor views (including the system's LinearLayout parentPanel),
-        // THEN add the ComposeView. This ensures ViewTreeLifecycleOwner is
-        // available BEFORE ComposeView.onAttachedToWindow fires.
+        // to ALL ancestor views, THEN add the ComposeView.
         ensureOwnersPropagated(frame, vm, settings)
 
         return frame
@@ -120,11 +119,6 @@ class MiMoInputMethodService : InputMethodService() {
      * Installs an OnAttachStateChangeListener that:
      * 1. Propagates ViewTreeLifecycleOwner to all ancestor views
      * 2. Adds the ComposeView to the container
-     *
-     * This is the KEY fix for the "ViewTreeLifecycleOwner not found" crash.
-     * The system wraps our view in a LinearLayout (parentPanel), and Compose's
-     * WindowRecomposer searches for the LifecycleOwner starting from that
-     * LinearLayout. Without setting it there, the search fails and crashes.
      */
     private fun ensureOwnersPropagated(
         frame: FrameLayout,
@@ -135,9 +129,6 @@ class MiMoInputMethodService : InputMethodService() {
             override fun onViewAttachedToWindow(v: View) {
                 try {
                     // Propagate ViewTreeLifecycleOwner to ALL ancestor views.
-                    // The system adds our FrameLayout as a child of a LinearLayout
-                    // (id=parentPanel). Compose's WindowRecomposer starts its search
-                    // from the window root, so we MUST set the owner on every ancestor.
                     var currentParent: ViewParent? = v.parent
                     while (currentParent is View) {
                         val parentView = currentParent as View
@@ -148,8 +139,6 @@ class MiMoInputMethodService : InputMethodService() {
                     }
 
                     // Now that owners are set on all ancestors, add the ComposeView.
-                    // ComposeView.onAttachedToWindow will fire, and it will find
-                    // the ViewTreeLifecycleOwner on the parent LinearLayout.
                     val existingCompose = composeView
                     if (existingCompose != null && existingCompose.parent == null) {
                         frame.addView(existingCompose)
@@ -164,7 +153,11 @@ class MiMoInputMethodService : InputMethodService() {
                         val newComposeView = ComposeView(this@MiMoInputMethodService).apply {
                             setContent {
                                 HorizonKeyboardTheme {
-                                    KeyboardScreen(viewModel = currentVm, settings = currentSettings)
+                                    KeyboardScreen(
+                                        viewModel = currentVm,
+                                        settings = currentSettings,
+                                        voiceRecognizer = voiceRecognizer
+                                    )
                                 }
                             }
                         }
@@ -173,7 +166,6 @@ class MiMoInputMethodService : InputMethodService() {
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in onViewAttachedToWindow", e)
-                    // If ComposeView fails, show a plain error message
                     showErrorInView(frame, e)
                 }
 
@@ -186,14 +178,13 @@ class MiMoInputMethodService : InputMethodService() {
 
     /**
      * Shows an error message inside the FrameLayout using a plain TextView.
-     * This works even when Compose fails to initialize.
      */
     private fun showErrorInView(frame: FrameLayout, e: Exception) {
         try {
             frame.removeAllViews()
             val errorText = TextView(this@MiMoInputMethodService).apply {
                 text = "Horizon KB Error:\n${e.javaClass.simpleName}: ${e.message}\n\nCheck logcat for details."
-                setTextColor(0xFFFF453A.toInt()) // Red
+                setTextColor(0xFFFF453A.toInt())
                 setTextSize(12f)
                 setPadding(16, 16, 16, 16)
                 setTextIsSelectable(true)
@@ -248,6 +239,8 @@ class MiMoInputMethodService : InputMethodService() {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
+        // Stop voice recognition when keyboard hides
+        voiceRecognizer?.stopListening()
         // Pause lifecycle when keyboard is hidden
         if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
             lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
@@ -260,6 +253,10 @@ class MiMoInputMethodService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        // Destroy voice recognizer
+        voiceRecognizer?.destroy()
+        voiceRecognizer = null
+
         // Properly stop lifecycle before destroy
         if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
             lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)

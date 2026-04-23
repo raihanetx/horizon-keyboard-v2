@@ -74,6 +74,13 @@ class KeyboardSettings(context: Context) {
         get() = prefs.getFloat(KEY_KEY_HEIGHT, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_KEY_HEIGHT, value).apply()
 
+    // ── Voice Language ──────────────────────────────────────
+
+    /** Preferred voice typing language. "en-US" for English, "bn-BD" for Bangla */
+    var voiceLanguage: String
+        get() = prefs.getString(KEY_VOICE_LANGUAGE, "en-US") ?: "en-US"
+        set(value) = prefs.edit().putString(KEY_VOICE_LANGUAGE, value).apply()
+
     companion object {
         private const val KEY_HAPTICS = "haptics_enabled"
         private const val KEY_SOUND = "sound_enabled"
@@ -82,5 +89,21 @@ class KeyboardSettings(context: Context) {
         private const val KEY_SHOW_SUGGESTIONS = "show_suggestions"
         private const val KEY_LONG_PRESS_DELAY = "long_press_delay"
         private const val KEY_KEY_HEIGHT = "key_height"
+        private const val KEY_VOICE_LANGUAGE = "voice_language"
+
+        /** Supported voice languages */
+        val VOICE_LANGUAGES = listOf(
+            VoiceLanguage("en-US", "English", "EN"),
+            VoiceLanguage("bn-BD", "বাংলা", "BN")
+        )
     }
 }
+
+/**
+ * Represents a supported voice language.
+ */
+data class VoiceLanguage(
+    val locale: String,
+    val displayName: String,
+    val shortCode: String
+)

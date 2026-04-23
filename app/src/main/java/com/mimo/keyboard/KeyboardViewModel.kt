@@ -68,6 +68,18 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
     var suggestions by mutableStateOf(listOf<String>())
         private set
 
+    // ── Voice typing state ─────────────────────────────────────
+    // NOTE: Using private backing MutableState to avoid JVM signature clash
+    // between Kotlin's auto-generated setter and our public setVoiceListening() etc.
+    private var _isVoiceListening by mutableStateOf(false)
+    val isVoiceListening: Boolean get() = _isVoiceListening
+
+    private var _voiceRecognizedText by mutableStateOf("")
+    val voiceRecognizedText: String get() = _voiceRecognizedText
+
+    private var _voiceLanguage by mutableStateOf(settings?.voiceLanguage ?: "en-US")
+    val voiceLanguage: String get() = _voiceLanguage
+
     // ── Input connection ────────────────────────────────────
     // FIX: Use @Volatile for thread-safety — inputConnection can be set
     // from InputMethodService callbacks and read from Compose UI thread.
@@ -407,6 +419,43 @@ class KeyboardViewModel(private val settings: KeyboardSettings? = null) : ViewMo
      */
     fun refreshSuggestions() {
         updateSuggestions()
+    }
+
+    /**
+     * Sets the voice listening state.
+     */
+    fun setVoiceListening(isListening: Boolean) {
+        _isVoiceListening = isListening
+        if (!isListening) {
+            _voiceRecognizedText = ""
+        }
+    }
+
+    /**
+     * Updates the voice recognized text (partial or final).
+     */
+    fun setVoiceRecognizedText(text: String) {
+        _voiceRecognizedText = text
+    }
+
+    /**
+     * Commits the final voice recognition result to the input field.
+     */
+    fun commitVoiceResult(text: String) {
+        val ic = inputConnection
+        if (ic != null && text.isNotEmpty()) {
+            ic.commitText(text, 1)
+            syncFromInputConnection(ic)
+        }
+        _voiceRecognizedText = ""
+    }
+
+    /**
+     * Sets the voice language preference.
+     */
+    fun setVoiceLanguage(locale: String) {
+        _voiceLanguage = locale
+        settings?.voiceLanguage = locale
     }
 
     /**

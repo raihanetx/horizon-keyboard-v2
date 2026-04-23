@@ -7,16 +7,27 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import kotlinx.coroutines.isActive
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.mimo.keyboard.KeyAction
 import com.mimo.keyboard.KeyboardSettings
 import com.mimo.keyboard.KeyboardTab
 import com.mimo.keyboard.KeyboardViewModel
+import com.mimo.keyboard.VoiceRecognizer
 import com.mimo.keyboard.ui.panels.ClipboardPanel
 import com.mimo.keyboard.ui.panels.SettingsPanel
 import com.mimo.keyboard.ui.panels.TranslatePanel
@@ -28,7 +39,7 @@ import com.mimo.keyboard.ui.theme.HorizonColors
  *
  * Layout (matching HTML prototype, bottom to top):
  * ┌─────────────────────────────┐
- * │  Toolbar Header             │  48dp, 6 tab buttons (with border-top)
+ * │  Toolbar Header             │  48dp, tab buttons (with border-top)
  * ├─────────────────────────────┤
  * │  Suggestion Bar             │  40dp, appears when typing (animated slide)
  * ├─────────────────────────────┤
@@ -41,6 +52,7 @@ import com.mimo.keyboard.ui.theme.HorizonColors
 fun KeyboardScreen(
     viewModel: KeyboardViewModel,
     settings: KeyboardSettings? = null,
+    voiceRecognizer: VoiceRecognizer? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -83,7 +95,7 @@ fun KeyboardScreen(
         }
     }
 
-    // Main container - fixed height matching HTML --ma-h: 220px
+    // Main container
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -93,7 +105,16 @@ fun KeyboardScreen(
         ToolbarHeader(
             currentTab = viewModel.currentTab,
             isVoiceActive = viewModel.currentTab == KeyboardTab.VOICE,
-            onTabSelected = { viewModel.switchTab(it) }
+            onTabSelected = { tab ->
+                // Stop voice when switching away from voice tab
+                if (viewModel.currentTab == KeyboardTab.VOICE && tab != KeyboardTab.VOICE) {
+                    voiceRecognizer?.stopListening()
+                }
+                viewModel.switchTab(tab)
+            },
+            viewModel = viewModel,
+            voiceRecognizer = voiceRecognizer,
+            settings = settings
         )
 
         // -- Suggestion Bar (appears when typing) -----------
@@ -115,7 +136,7 @@ fun KeyboardScreen(
         ) {
             // Panel visibility based on current tab
             when (viewModel.currentTab) {
-                KeyboardTab.KEYBOARD, KeyboardTab.VOICE -> {
+                KeyboardTab.KEYBOARD -> {
                     QwertyKeyboard(
                         isShiftOn = viewModel.isShiftOn,
                         isNumberLayer = isNumberLayer,
@@ -140,6 +161,12 @@ fun KeyboardScreen(
                         }
                     )
                 }
+                KeyboardTab.VOICE -> {
+                    VoicePanel(
+                        viewModel = viewModel,
+                        voiceRecognizer = voiceRecognizer
+                    )
+                }
                 KeyboardTab.TRANSLATE -> {
                     TranslatePanel(sourceText = viewModel.textValue, viewModel = viewModel)
                 }
@@ -155,8 +182,198 @@ fun KeyboardScreen(
 }
 
 /**
+ * Voice typing panel — full panel view with language selector,
+ * start/stop controls, and live recognized text preview.
+ */
+@Composable
+private fun VoicePanel(
+    viewModel: KeyboardViewModel,
+    voiceRecognizer: VoiceRecognizer?,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val currentVoiceLang = viewModel.voiceLanguage
+    val isListening = viewModel.isVoiceListening
+    val recognizedText = viewModel.voiceRecognizedText
+
+    // Check mic permission
+    val hasMicPermission = android.content.pm.PackageManager.PERMISSION_GRANTED ==
+            context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+
+    val currentLangInfo = KeyboardSettings.VOICE_LANGUAGES.find { it.locale == currentVoiceLang }
+        ?: KeyboardSettings.VOICE_LANGUAGES.first()
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(HorizonColors.Background)
+            .padding(10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // Language selector row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "VOICE",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = HorizonColors.Accent,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 1.sp
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Language toggle buttons
+            KeyboardSettings.VOICE_LANGUAGES.forEach { lang ->
+                val isSelected = lang.locale == currentVoiceLang
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(
+                            if (isSelected) HorizonColors.Accent.copy(alpha = 0.2f)
+                            else HorizonColors.KeyboardSurface
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = if (isSelected) HorizonColors.Accent.copy(alpha = 0.6f)
+                            else HorizonColors.BorderPrimary,
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                if (!isListening) {
+                                    viewModel.setVoiceLanguage(lang.locale)
+                                }
+                            }
+                        )
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "${lang.shortCode} ${lang.displayName}",
+                        fontSize = 10.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isSelected) HorizonColors.Accent else HorizonColors.TextMuted,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Animated voice indicator
+        VoiceAnimationBars(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Mic button — large start/stop
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    if (isListening) HorizonColors.Error.copy(alpha = 0.15f)
+                    else HorizonColors.Accent.copy(alpha = 0.15f)
+                )
+                .border(
+                    width = 1.5.dp,
+                    color = if (isListening) HorizonColors.Error.copy(alpha = 0.6f)
+                    else HorizonColors.Accent.copy(alpha = 0.6f),
+                    shape = RoundedCornerShape(14.dp)
+                )
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {
+                        if (!hasMicPermission) return@clickable
+                        if (isListening) {
+                            voiceRecognizer?.stopListening()
+                        } else {
+                            voiceRecognizer?.startListening()
+                        }
+                    }
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (isListening) "STOP" else "MIC",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isListening) HorizonColors.Error else HorizonColors.Accent,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 1.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Recognized text preview
+        if (recognizedText.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(HorizonColors.KeyboardSurface)
+                    .border(
+                        width = 1.dp,
+                        color = HorizonColors.Accent.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = recognizedText,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = HorizonColors.TextPrimary,
+                    fontFamily = FontFamily.Monospace,
+                    lineHeight = 20.sp
+                )
+            }
+        } else if (!hasMicPermission) {
+            // Permission hint
+            Text(
+                text = "Microphone permission required.\nPlease enable it in Settings.",
+                fontSize = 11.sp,
+                color = HorizonColors.Error,
+                fontFamily = FontFamily.Monospace,
+                lineHeight = 16.sp
+            )
+        } else if (!isListening) {
+            Text(
+                text = "Tap MIC to start voice typing",
+                fontSize = 11.sp,
+                color = HorizonColors.TextExtraMuted,
+                fontFamily = FontFamily.Monospace
+            )
+        } else {
+            Text(
+                text = "Listening...",
+                fontSize = 11.sp,
+                color = HorizonColors.Accent.copy(alpha = 0.7f),
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
+}
+
+/**
  * QWERTY keyboard layout composable.
- * Renders the 4-row keyboard matching the HTML prototype.
  */
 @Composable
 private fun QwertyKeyboard(

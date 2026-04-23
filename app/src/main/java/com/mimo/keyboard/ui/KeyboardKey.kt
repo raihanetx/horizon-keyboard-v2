@@ -56,9 +56,12 @@ data class KeyDef(
  * 1. Key alternatives (accents, symbols) shown as a popup
  * 2. Key repeat for backspace (hold to delete continuously)
  *
- * The pressed state visual effect:
- * - Unpressed: key has 2dp shadow (raised appearance)
- * - Pressed: key moves down 1dp, shadow reduces to 0dp (pressed in appearance)
+ * FIX: Key styling now uses solid bulky backgrounds with proper padding
+ * instead of thin-line boxes that felt insubstantial. Keys now have:
+ * - Proper internal padding so text doesn't touch edges
+ * - Solid background fills with subtle border for depth
+ * - Better visual weight with increased height and rounded corners
+ * - Clear pressed/unpressed state differentiation
  */
 @Composable
 fun KeyboardKey(
@@ -72,138 +75,135 @@ fun KeyboardKey(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
-    // FIX: Track long-press state for popup and repeat.
-    // consumeNextClick is set to true when a long-press fires, and consumed
-    // by the onClick handler. This prevents the race condition where
-    // isLongPressTriggered is reset to false (in LaunchedEffect's else branch)
-    // before onClick checks it, causing the primary action to fire after a
-    // long-press release.
     var showAlternatives by remember { mutableStateOf(false) }
     var isLongPressTriggered by remember { mutableStateOf(false) }
     var consumeNextClick by remember { mutableStateOf(false) }
 
-    // FIX: Key repeat for backspace — repeatedly fires delete while held.
-    // Uses longPressDelayMs from settings instead of hardcoded constant.
-    //
-    // BUG FIX: Previous code set isLongPressTriggered = false when isPressed
-    // became false, but there was a race with onClick: the LaunchedEffect's
-    // else branch could run and reset isLongPressTriggered BEFORE onClick
-    // checked it, causing an extra backspace on release. Now we use
-    // consumeNextClick as a one-shot flag that onClick reads and clears,
-    // which is immune to this race.
+    // Key repeat for backspace — repeatedly fires delete while held.
     if (keyDef.style == KeyStyle.BACKSPACE) {
         LaunchedEffect(isPressed) {
             if (isPressed) {
-                // Initial delay before repeat starts
-                delay(longPressDelayMs + 100L)  // Slightly longer than long-press for repeat
+                delay(longPressDelayMs + 100L)
                 isLongPressTriggered = true
-                consumeNextClick = true  // FIX: Mark that next onClick should be suppressed
-                // Continuous repeat while pressed
+                consumeNextClick = true
                 while (isActive) {
                     onPress(KeyAction.Backspace)
                     delay(REPEAT_INTERVAL_MS)
                 }
             } else {
                 isLongPressTriggered = false
-                // Note: do NOT reset consumeNextClick here — onClick may not
-                // have run yet. onClick will consume and reset it.
             }
         }
     }
 
-    // FIX: Long-press detection for key alternatives.
-    //
-    // BUG FIX: Previous code had a race condition — when isPressed became
-    // false, isLongPressTriggered was reset before onClick could check it,
-    // causing the primary key action to fire after releasing a long-press.
-    // Now we use consumeNextClick as a one-shot flag: set during long-press,
-    // read and cleared by onClick. This guarantees that if a long-press
-    // occurred, the subsequent onClick is always suppressed.
-    //
-    // The popup stays visible after release (dismissed by Popup's own
-    // dismiss handling: dismissOnClickOutside, dismissOnBackPress),
-    // so the user can tap an alternative at their leisure.
+    // Long-press detection for key alternatives.
     if (keyDef.alternatives != null && keyDef.style != KeyStyle.BACKSPACE) {
         LaunchedEffect(isPressed) {
             if (isPressed) {
                 delay(longPressDelayMs)
                 if (isActive) {
                     isLongPressTriggered = true
-                    consumeNextClick = true  // FIX: Mark that next onClick should be suppressed
+                    consumeNextClick = true
                     showAlternatives = true
                 }
             } else {
-                // Only reset the long-press flag. Do NOT reset consumeNextClick
-                // here — onClick hasn't run yet and needs to see it.
                 isLongPressTriggered = false
             }
         }
     }
 
+    // Determine the key shape — bigger corner radius for bulky feel
+    val keyShape = RoundedCornerShape(12.dp)
+
+    // Background color with smooth animation — solid fills for bulky keys
     val backgroundColor by animateColorAsState(
         targetValue = when {
             isPressed -> HorizonColors.KeyPressed
             keyDef.style == KeyStyle.ENTER -> HorizonColors.Accent
             keyDef.style == KeyStyle.SPECIAL && isShiftActive -> HorizonColors.Accent
             keyDef.style == KeyStyle.SPECIAL || keyDef.style == KeyStyle.BACKSPACE -> HorizonColors.SpecialKeyBackground
-            else -> HorizonColors.KeyGradientTop
+            keyDef.style == KeyStyle.SPACE -> HorizonColors.SpaceKeyBackground
+            else -> HorizonColors.KeyFillBackground
         },
         animationSpec = tween(durationMillis = 80),
         label = "key_bg"
     )
 
+    // Border color — more visible border for better key definition
+    val borderColor by animateColorAsState(
+        targetValue = when {
+            isPressed -> HorizonColors.KeyPressed.copy(alpha = 0.8f)
+            keyDef.style == KeyStyle.ENTER -> HorizonColors.Accent.copy(alpha = 0.7f)
+            keyDef.style == KeyStyle.SPECIAL && isShiftActive -> HorizonColors.Accent.copy(alpha = 0.7f)
+            keyDef.style == KeyStyle.SPACE -> HorizonColors.BorderPrimary.copy(alpha = 0.3f)
+            else -> HorizonColors.KeyBorderNormal
+        },
+        animationSpec = tween(durationMillis = 80),
+        label = "key_border"
+    )
+
     val fontSize = when (keyDef.style) {
-        KeyStyle.SPACE -> 11.sp
-        KeyStyle.ENTER -> 12.sp
-        else -> 18.sp
+        KeyStyle.SPACE -> 12.sp
+        KeyStyle.ENTER -> 13.sp
+        KeyStyle.BACKSPACE -> 20.sp
+        KeyStyle.SPECIAL -> 15.sp
+        else -> 20.sp
     }
 
     val fontWeight = when (keyDef.style) {
         KeyStyle.ENTER -> FontWeight.Bold
         KeyStyle.SPACE -> FontWeight.Medium
+        KeyStyle.SPECIAL -> FontWeight.SemiBold
         else -> FontWeight.Medium
     }
 
-    // FIX: Wrapper Box for popup positioning.
-    // Note: Compose children are NOT clipped by their parent by default,
-    // so the AlternativesPopup can overflow above the key. However, the
-    // KeyboardRow's Row and the parent Column in QwertyKeyboard may clip.
-    // The popup is positioned with offset(y = -8.dp) to appear above the key.
+    // Key height — base 52dp with multiplier, giving more vertical bulk
+    val keyHeightDp = (52 * keyHeightMultiplier)
+
     Box(modifier = modifier) {
-        // Main key
-        // FIX: Use keyHeightMultiplier from settings instead of hardcoded 46.dp.
-        // The keyHeightMultiplier setting was defined in KeyboardSettings but
-        // never wired to the actual key height — changing it had no effect.
+        // Main key — solid bulky box with prominent fill and border
         Box(
             modifier = Modifier
-                .height((46 * keyHeightMultiplier).dp)
+                .fillMaxWidth()
+                .height(keyHeightDp.dp)
                 .then(
                     if (isPressed) Modifier.offset(y = 1.dp) else Modifier
                 )
                 .shadow(
-                    elevation = if (isPressed) 0.dp else 2.dp,
-                    shape = RoundedCornerShape(8.dp),
+                    elevation = if (isPressed) 1.dp else 4.dp,
+                    shape = keyShape,
                     ambientColor = HorizonColors.KeyShadow,
                     spotColor = HorizonColors.KeyShadow
                 )
-                .background(
-                    color = backgroundColor,
-                    shape = RoundedCornerShape(8.dp)
+                .clip(keyShape)
+                .background(color = backgroundColor, shape = keyShape)
+                .border(
+                    width = if (isPressed) 1.dp else 1.5.dp,
+                    color = borderColor,
+                    shape = keyShape
                 )
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,
                     onClick = {
-                        // FIX: Use consumeNextClick to prevent firing the primary action
-                        // after a long-press. The previous isLongPressTriggered check
-                        // had a race condition — LaunchedEffect could reset it before
-                        // this onClick ran. consumeNextClick is a one-shot flag that
-                        // this handler reads and clears, making it race-proof.
                         if (consumeNextClick) {
                             consumeNextClick = false
-                            return@clickable  // Long-press handled it; skip primary action
+                            return@clickable
                         }
                         onPress(keyDef.action)
+                    }
+                )
+                .padding(
+                    horizontal = when (keyDef.style) {
+                        KeyStyle.SPACE -> 12.dp
+                        KeyStyle.ENTER -> 8.dp
+                        KeyStyle.SPECIAL -> 6.dp
+                        else -> 6.dp
+                    },
+                    vertical = when (keyDef.style) {
+                        KeyStyle.SPACE -> 10.dp
+                        KeyStyle.ENTER -> 8.dp
+                        else -> 8.dp
                     }
                 ),
             contentAlignment = Alignment.Center
@@ -213,23 +213,21 @@ fun KeyboardKey(
                     keyDef.style == KeyStyle.SPACE -> "SPACE"
                     else -> keyDef.label
                 },
-                color = HorizonColors.TextPrimary,
+                color = when {
+                    keyDef.style == KeyStyle.ENTER -> HorizonColors.TextPrimary
+                    keyDef.style == KeyStyle.SPECIAL && isShiftActive -> HorizonColors.TextPrimary
+                    else -> HorizonColors.TextPrimary
+                },
                 fontSize = fontSize,
                 fontWeight = fontWeight,
                 letterSpacing = if (keyDef.style == KeyStyle.SPACE) 2.sp else 0.sp
             )
         }
 
-        // FIX: Long-press alternatives popup — uses Popup composable to render
-        // ABOVE the keyboard layout, preventing clipping by parent containers.
-        // Previously, the popup was an inline Box that could be clipped by the
-        // parent Row/Column for top-row keys where vertical space is limited.
+        // Long-press alternatives popup
         if (showAlternatives && keyDef.alternatives != null) {
-            // FIX: Convert dp offset to pixels for the Popup offset parameter.
-            // Previously used raw pixel value -8 which was too small on high-density
-            // screens (~2.6dp on a 3x density device). Now properly converts from dp.
             val density = LocalDensity.current
-            val popupOffsetY = with(density) { (-8).dp.roundToPx() }
+            val popupOffsetY = with(density) { (-12).dp.roundToPx() }
 
             Popup(
                 properties = PopupProperties(
@@ -266,8 +264,6 @@ fun KeyboardKey(
 
 /**
  * Popup showing alternative key options on long-press.
- * Rendered inside a Popup composable so it appears above the keyboard layout
- * without being clipped by parent containers.
  */
 @Composable
 private fun AlternativesPopup(
@@ -279,19 +275,19 @@ private fun AlternativesPopup(
         modifier = Modifier
             .width(IntrinsicSize.Max)
             .shadow(
-                elevation = 4.dp,
-                shape = RoundedCornerShape(8.dp),
+                elevation = 6.dp,
+                shape = RoundedCornerShape(10.dp),
                 ambientColor = HorizonColors.KeyShadow,
                 spotColor = HorizonColors.KeyShadow
             )
             .background(
                 color = HorizonColors.KeyboardSurface,
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(10.dp)
             )
             .border(
                 width = 1.dp,
                 color = HorizonColors.Accent.copy(alpha = 0.5f),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(10.dp)
             )
             .padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -300,9 +296,14 @@ private fun AlternativesPopup(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(38.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(HorizonColors.KeyGradientTop, RoundedCornerShape(6.dp))
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(HorizonColors.KeyGradientTop, RoundedCornerShape(7.dp))
+                    .border(
+                        width = 0.5.dp,
+                        color = HorizonColors.BorderPrimary.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(7.dp)
+                    )
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -317,11 +318,6 @@ private fun AlternativesPopup(
                     fontWeight = FontWeight.Medium
                 )
             }
-            // BUG FIX: Use index comparison instead of label string comparison.
-            // Previous code: `if (label != alternatives.last().first)` — this breaks
-            // when two alternatives have the same label string (e.g., two words that
-            // map to different actions but share a display label). Now correctly uses
-            // index-based comparison which is always accurate.
             if (index < alternatives.lastIndex) {
                 Spacer(modifier = Modifier.height(2.dp))
             }

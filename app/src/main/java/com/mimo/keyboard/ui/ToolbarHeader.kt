@@ -1,25 +1,35 @@
 package com.mimo.keyboard.ui
 
+import android.content.pm.PackageManager
+import android.Manifest
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mimo.keyboard.KeyboardSettings
 import com.mimo.keyboard.KeyboardTab
+import com.mimo.keyboard.KeyboardViewModel
+import com.mimo.keyboard.VoiceRecognizer
 import com.mimo.keyboard.R
 import com.mimo.keyboard.ui.theme.HorizonColors
 
@@ -33,7 +43,10 @@ fun ToolbarHeader(
     currentTab: KeyboardTab,
     isVoiceActive: Boolean = false,
     onTabSelected: (KeyboardTab) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: KeyboardViewModel? = null,
+    voiceRecognizer: VoiceRecognizer? = null,
+    settings: KeyboardSettings? = null
 ) {
     Box(
         modifier = modifier
@@ -49,11 +62,17 @@ fun ToolbarHeader(
             modifier = Modifier.fillMaxSize()
         ) {
             VoiceOverlayContent(
-                onClose = { onTabSelected(KeyboardTab.KEYBOARD) }
+                viewModel = viewModel,
+                voiceRecognizer = voiceRecognizer,
+                settings = settings,
+                onClose = { 
+                    voiceRecognizer?.stopListening()
+                    onTabSelected(KeyboardTab.KEYBOARD) 
+                }
             )
         }
 
-        // Normal toolbar buttons (6 tabs matching HTML)
+        // Normal toolbar buttons (5 tabs)
         AnimatedVisibility(
             visible = !isVoiceActive,
             enter = fadeIn(),
@@ -146,45 +165,143 @@ private fun ToolbarButton(
 
 /**
  * Voice recording overlay that replaces the toolbar.
- * Maps to the .v-overlay element with animated bars.
+ * Now includes:
+ * - Language selector (EN / BN) to choose voice recognition language
+ * - Pulsing mic animation with waveform bars
+ * - Start/stop voice listening
+ * - Live recognized text preview
+ * - Close button
  */
 @Composable
 private fun VoiceOverlayContent(
+    viewModel: KeyboardViewModel?,
+    voiceRecognizer: VoiceRecognizer?,
+    settings: KeyboardSettings?,
     onClose: () -> Unit
 ) {
+    val context = LocalContext.current
+    val currentVoiceLang = viewModel?.voiceLanguage ?: "en-US"
+    val isListening = viewModel?.isVoiceListening ?: false
+    val recognizedText = viewModel?.voiceRecognizedText ?: ""
+
+    // Check microphone permission
+    val hasMicPermission = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+
     Row(
         modifier = Modifier
             .fillMaxSize()
             .background(HorizonColors.Background)
-            .padding(horizontal = 15.dp),
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        // Language label
-        Text(
-            text = "EN",
-            fontSize = 10.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = HorizonColors.Accent
-        )
+        // Language selector — tap to toggle EN ↔ BN
+        val currentLangInfo = KeyboardSettings.VOICE_LANGUAGES.find { it.locale == currentVoiceLang }
+            ?: KeyboardSettings.VOICE_LANGUAGES.first()
 
-        // Animated voice bars
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(
+                    if (isListening) HorizonColors.Accent.copy(alpha = 0.2f)
+                    else HorizonColors.KeyboardSurface
+                )
+                .border(
+                    width = 1.dp,
+                    color = if (isListening) HorizonColors.Accent.copy(alpha = 0.5f)
+                    else HorizonColors.BorderPrimary,
+                    shape = RoundedCornerShape(6.dp)
+                )
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {
+                        if (!isListening) {
+                            // Toggle language
+                            val currentIndex = KeyboardSettings.VOICE_LANGUAGES.indexOfFirst { it.locale == currentVoiceLang }
+                            val nextIndex = (currentIndex + 1) % KeyboardSettings.VOICE_LANGUAGES.size
+                            viewModel?.setVoiceLanguage(KeyboardSettings.VOICE_LANGUAGES[nextIndex].locale)
+                        }
+                    }
+                )
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = currentLangInfo.shortCode,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (isListening) HorizonColors.Accent else HorizonColors.TextMuted,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+
+        // Animated voice bars (center)
         VoiceAnimationBars(
             modifier = Modifier.weight(1f)
         )
 
-        // Close button
-        Text(
-            text = "\u2716",
-            color = HorizonColors.Error,
-            fontWeight = FontWeight.Bold,
+        // Mic button — start/stop listening
+        Box(
             modifier = Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(
+                    if (isListening) HorizonColors.Error.copy(alpha = 0.2f)
+                    else HorizonColors.Accent.copy(alpha = 0.2f)
+                )
+                .border(
+                    width = 1.dp,
+                    color = if (isListening) HorizonColors.Error.copy(alpha = 0.5f)
+                    else HorizonColors.Accent.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {
+                        if (!hasMicPermission) {
+                            // Can't start without permission — show a hint
+                            return@clickable
+                        }
+                        if (isListening) {
+                            voiceRecognizer?.stopListening()
+                        } else {
+                            voiceRecognizer?.startListening()
+                        }
+                    }
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (isListening) "■" else "●",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isListening) HorizonColors.Error else HorizonColors.Accent,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+
+        // Close button
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(HorizonColors.KeyboardSurface)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onClose
-                )
-                .padding(5.dp)
-        )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "\u2716",
+                fontSize = 12.sp,
+                color = HorizonColors.TextMuted,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }

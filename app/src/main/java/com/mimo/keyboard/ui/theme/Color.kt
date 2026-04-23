@@ -28,6 +28,15 @@ object HorizonColors {
     // Key gradient bottom: #2c2c2e
     val KeyGradientBottom = Color(0xFF2C2C2E)
 
+    // Key fill background — solid prominent fill for normal keys (lighter than surface)
+    val KeyFillBackground = Color(0xFF48484A)
+
+    // Space key background — slightly different tone for the space bar
+    val SpaceKeyBackground = Color(0xFF3A3A3C)
+
+    // Key border normal — visible border for regular keys
+    val KeyBorderNormal = Color(0xFF5A5A5E)
+
     // Key shadow: #151517
     val KeyShadow = Color(0xFF151517)
 
@@ -49,4 +58,7 @@ object HorizonColors {
 
     // Pure black for body
     val PureBlack = Color(0xFF000000)
+
+    // Voice panel surface
+    val VoiceSurface = Color(0xFF232326)
 }
