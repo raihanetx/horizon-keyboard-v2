@@ -99,10 +99,12 @@ fun KeyboardScreen(
         }
     }
 
-    // Main container
+    // Main container — WRAP_CONTENT height so the keyboard is only as tall
+    // as its content. The system positions it at the bottom via InputMethodService.
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .wrapContentHeight()
             .background(HorizonColors.Background)
     ) {
         // -- Toolbar Header (with border-top like HTML .tb) ----
@@ -132,12 +134,15 @@ fun KeyboardScreen(
         )
 
         // -- Main Area (panels + keyboard) ------------------
+        // Fixed height instead of .weight(1f) to prevent the keyboard from
+        // expanding to fill the entire screen. The keyboard should be compact
+        // and anchored at the bottom, not stretched to the top.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
+                .height(220.dp)
                 .background(HorizonColors.Background)
-                .padding(start = 6.dp, end = 6.dp, top = 8.dp, bottom = 8.dp)
+                .padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
         ) {
             // Panel visibility based on current tab
             when (viewModel.currentTab) {

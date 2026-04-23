@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
+import android.graphics.Rect
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -67,6 +68,9 @@ class MiMoInputMethodService : InputMethodService() {
     // Callback for requesting mic permission from the keyboard UI
     var onRequestMicPermission: (() -> Unit)? = null
 
+    // Track the keyboard container height for insets computation
+    private var keyboardHeight: Int = 0
+
     override fun onCreate() {
         super.onCreate()
         keyboardSettings = KeyboardSettings(this)
@@ -107,18 +111,15 @@ class MiMoInputMethodService : InputMethodService() {
         val settings = keyboardSettings ?: KeyboardSettings(this).also { keyboardSettings = it }
         val density = resources.displayMetrics.density
 
-        // Create a LinearLayout with gravity=bottom so the keyboard
-        // stays anchored to the bottom of the input area.
-        // FIX: Previously used FrameLayout which could cause the keyboard
-        // to appear at the top. LinearLayout with BOTTOM gravity ensures
-        // the keyboard content is always at the bottom of the window.
-        val frame = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.BOTTOM
-            minimumHeight = (270 * density).toInt()
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+        // Create a FrameLayout that wraps the ComposeView.
+        // The ComposeView content controls its own height (WRAP_CONTENT),
+        // so the keyboard is only as tall as it needs to be.
+        // Gravity.BOTTOM ensures the keyboard anchors to the bottom.
+        val frame = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM
             )
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeViewModelStoreOwner(lifecycleOwner)
@@ -179,6 +180,12 @@ class MiMoInputMethodService : InputMethodService() {
                                     )
                                 }
                             }
+                            // WRAP_CONTENT so the ComposeView is only as tall as its content
+                            layoutParams = FrameLayout.LayoutParams(
+                                FrameLayout.LayoutParams.MATCH_PARENT,
+                                FrameLayout.LayoutParams.WRAP_CONTENT,
+                                Gravity.BOTTOM
+                            )
                         }
                         composeView = newComposeView
                         frame.addView(newComposeView)
@@ -240,6 +247,47 @@ class MiMoInputMethodService : InputMethodService() {
             } catch (e2: Exception) {
                 Log.e(TAG, "Failed to open app settings too", e2)
             }
+        }
+    }
+
+    /**
+     * Prevent fullscreen mode — the keyboard must stay at the bottom,
+     * not take over the entire screen.
+     */
+    override fun onEvaluateFullscreenMode(): Boolean {
+        return false
+    }
+
+    /**
+     * Compute insets so the system knows exactly where the keyboard
+     * content is. This is critical for:
+     * 1. The app behind the keyboard scrolls its content up properly
+     * 2. Touch events outside the keyboard go to the app
+     * 3. The keyboard is positioned at the bottom of the screen
+     */
+    override fun onComputeInsets(outInsets: Insets?) {
+        super.onComputeInsets(outInsets)
+        if (outInsets != null) {
+            val windowHeight = window.window?.decorView?.height ?: 0
+            val containerView = container
+            val kbHeight: Int
+            if (containerView != null && containerView.height > 0) {
+                // The keyboard occupies from (windowHeight - keyboardHeight) to windowHeight
+                // contentTopInsets = distance from top of window to top of keyboard content
+                kbHeight = containerView.height
+                keyboardHeight = kbHeight
+            } else {
+                // Fallback: estimate keyboard height (~280dp)
+                kbHeight = (280 * resources.displayMetrics.density).toInt()
+            }
+            val topInset = windowHeight - kbHeight
+            outInsets.contentTopInsets = topInset
+            outInsets.visibleTopInsets = topInset
+            // Define the touchable region as the keyboard area only
+            outInsets.touchableRegion.set(
+                0, topInset,
+                resources.displayMetrics.widthPixels, windowHeight
+            )
         }
     }
 
