@@ -12,9 +12,7 @@ import android.view.ViewGroup
 import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
-import android.graphics.Rect
 import android.widget.FrameLayout
-import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
@@ -67,9 +65,6 @@ class MiMoInputMethodService : InputMethodService() {
 
     // Callback for requesting mic permission from the keyboard UI
     var onRequestMicPermission: (() -> Unit)? = null
-
-    // Track the keyboard container height for insets computation
-    private var keyboardHeight: Int = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -260,34 +255,39 @@ class MiMoInputMethodService : InputMethodService() {
 
     /**
      * Compute insets so the system knows exactly where the keyboard
-     * content is. This is critical for:
-     * 1. The app behind the keyboard scrolls its content up properly
-     * 2. Touch events outside the keyboard go to the app
-     * 3. The keyboard is positioned at the bottom of the screen
+     * content is. This is critical for touch event delivery — if the
+     * touchable region doesn't cover the toolbar, taps on Translate/
+     * Voice/Clipboard/Settings icons will be routed to the app behind
+     * the keyboard instead of the keyboard itself.
+     *
+     * We use the INPUT VIEW's actual position on screen to compute
+     * insets, which is more reliable than estimating heights.
      */
     override fun onComputeInsets(outInsets: Insets?) {
         super.onComputeInsets(outInsets)
         if (outInsets != null) {
-            val windowHeight = window.window?.decorView?.height ?: 0
+            // Use our container view's actual screen position to compute insets.
+            // This is critical for touch event delivery — if the touchable region
+            // doesn't cover the toolbar, taps on Translate/Voice/Clipboard/Settings
+            // icons will be routed to the app behind the keyboard instead.
             val containerView = container
-            val kbHeight: Int
-            if (containerView != null && containerView.height > 0) {
-                // The keyboard occupies from (windowHeight - keyboardHeight) to windowHeight
-                // contentTopInsets = distance from top of window to top of keyboard content
-                kbHeight = containerView.height
-                keyboardHeight = kbHeight
-            } else {
-                // Fallback: estimate keyboard height (~280dp)
-                kbHeight = (280 * resources.displayMetrics.density).toInt()
+            if (containerView != null && containerView.isShown) {
+                val location = IntArray(2)
+                containerView.getLocationOnScreen(location)
+                val viewTop = location[1]
+
+                outInsets.contentTopInsets = viewTop
+                outInsets.visibleTopInsets = viewTop
+
+                // Touchable region covers from top of our view to bottom of screen.
+                // This ensures the toolbar receives touch events.
+                outInsets.touchableRegion.set(
+                    0, viewTop,
+                    resources.displayMetrics.widthPixels,
+                    resources.displayMetrics.heightPixels
+                )
             }
-            val topInset = windowHeight - kbHeight
-            outInsets.contentTopInsets = topInset
-            outInsets.visibleTopInsets = topInset
-            // Define the touchable region as the keyboard area only
-            outInsets.touchableRegion.set(
-                0, topInset,
-                resources.displayMetrics.widthPixels, windowHeight
-            )
+            // If container not yet laid out, let super's default handle it
         }
     }
 

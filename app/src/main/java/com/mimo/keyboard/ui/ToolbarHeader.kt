@@ -4,11 +4,6 @@ import android.content.pm.PackageManager
 import android.Manifest
 import android.content.Intent
 import android.provider.Settings
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -59,13 +54,11 @@ fun ToolbarHeader(
             .height(48.dp)
             .background(HorizonColors.KeyboardSurface)
     ) {
-        // Voice overlay (replaces toolbar when active)
-        AnimatedVisibility(
-            visible = isVoiceActive,
-            enter = fadeIn() + slideInVertically(),
-            exit = fadeOut() + slideOutVertically(),
-            modifier = Modifier.fillMaxSize()
-        ) {
+        // Use simple conditional rendering instead of AnimatedVisibility.
+        // AnimatedVisibility with two overlapping children can intercept
+        // touch events even when "invisible", making toolbar buttons
+        // unresponsive in the InputMethodService touch dispatch system.
+        if (isVoiceActive) {
             VoiceOverlayContent(
                 viewModel = viewModel,
                 voiceRecognizer = voiceRecognizer,
@@ -76,14 +69,7 @@ fun ToolbarHeader(
                     onTabSelected(KeyboardTab.KEYBOARD) 
                 }
             )
-        }
-
-        // Normal toolbar buttons (5 tabs)
-        AnimatedVisibility(
-            visible = !isVoiceActive,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
+        } else {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
